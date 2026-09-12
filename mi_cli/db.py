@@ -5,14 +5,15 @@ from pathlib import Path
 DB_PATH = Path("data.db")
 
 
-def get_connection() -> sqlite3.Connection:
-    con = sqlite3.connect(DB_PATH)
+def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
+    path = Path(db_path) if db_path else DB_PATH
+    con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     return con
 
 
-def init_db() -> None:
-    with get_connection() as con:
+def init_db(db_path: Path | str | None = None) -> None:
+    with get_connection(db_path) as con:
         con.execute("""
         CREATE TABLE IF NOT EXISTS pokemon (
             id INTEGER PRIMARY KEY,
@@ -26,9 +27,9 @@ def init_db() -> None:
         """)
 
 
-def save_pokemon(data: dict) -> None:
+def save_pokemon(data: dict, db_path: Path | str | None = None) -> None:
     types = json.dumps([t["type"]["name"] for t in data["types"]])
-    with get_connection() as con:
+    with get_connection(db_path) as con:
         con.execute("""
         INSERT INTO pokemon (id, name, height, weight, types, raw_json)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -49,15 +50,15 @@ def save_pokemon(data: dict) -> None:
         ))
 
 
-def list_pokemon() -> list[sqlite3.Row]:
-    with get_connection() as con:
+def list_pokemon(db_path: Path | str | None = None) -> list[sqlite3.Row]:
+    with get_connection(db_path) as con:
         return con.execute(
             "SELECT id, name, types, fetched_at FROM pokemon ORDER BY id"
         ).fetchall()
 
 
-def get_pokemon(name: str) -> sqlite3.Row | None:
-    with get_connection() as con:
+def get_pokemon(name: str, db_path: Path | str | None = None) -> sqlite3.Row | None:
+    with get_connection(db_path) as con:
         return con.execute(
             "SELECT * FROM pokemon WHERE name = ?",
             (name.lower(),),

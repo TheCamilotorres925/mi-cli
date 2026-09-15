@@ -30,7 +30,8 @@ def init_db(db_path: Path | str | None = None) -> None:
 def save_pokemon(data: dict, db_path: Path | str | None = None) -> None:
     types = json.dumps([t["type"]["name"] for t in data["types"]])
     with get_connection(db_path) as con:
-        con.execute("""
+        con.execute(
+            """
         INSERT INTO pokemon (id, name, height, weight, types, raw_json)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
@@ -40,14 +41,16 @@ def save_pokemon(data: dict, db_path: Path | str | None = None) -> None:
             types=excluded.types,
             raw_json=excluded.raw_json,
             fetched_at=CURRENT_TIMESTAMP
-        """, (
-            data["id"],
-            data["name"],
-            data["height"],
-            data["weight"],
-            types,
-            json.dumps(data),
-        ))
+        """,
+            (
+                data["id"],
+                data["name"],
+                data["height"],
+                data["weight"],
+                types,
+                json.dumps(data),
+            ),
+        )
 
 
 def list_pokemon(db_path: Path | str | None = None) -> list[sqlite3.Row]:

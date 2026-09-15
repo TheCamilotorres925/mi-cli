@@ -29,7 +29,7 @@ def fetch_cmd(
         data = api.fetch_pokemon(name)
     except api.PokemonAPIError as exc:
         typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
     db.save_pokemon(data)
     typer.secho(
@@ -49,9 +49,7 @@ def list_cmd():
 
     for row in rows:
         types = ", ".join(json.loads(row["types"]))
-        typer.echo(
-            f"{row['id']:>4}  {row['name']:<12}  {types}  ({row['fetched_at']})"
-        )
+        typer.echo(f"{row['id']:>4}  {row['name']:<12}  {types}  ({row['fetched_at']})")
 
 
 if __name__ == "__main__":

@@ -20,8 +20,6 @@ def fetch_pokemon(name: str) -> dict:
     if response.status_code == 404:
         raise PokemonAPIError(f"Pokémon no encontrado: {name}")
     if response.status_code != 200:
-        raise PokemonAPIError(
-            f"Respuesta inesperada de la API: {response.status_code}"
-        )
+        raise PokemonAPIError(f"Respuesta inesperada de la API: {response.status_code}")
 
     return response.json()

@@ -16,7 +16,8 @@ class FakeResponse:
 def test_fetch_pokemon_ok(monkeypatch):
     payload = {"id": 25, "name": "pikachu", "types": []}
     monkeypatch.setattr(
-        api.httpx, "get",
+        api.httpx,
+        "get",
         lambda url, timeout: FakeResponse(200, payload),
     )
 
@@ -39,7 +40,8 @@ def test_fetch_pokemon_normalizes_name(monkeypatch):
 
 def test_fetch_pokemon_not_found(monkeypatch):
     monkeypatch.setattr(
-        api.httpx, "get",
+        api.httpx,
+        "get",
         lambda url, timeout: FakeResponse(404),
     )
 

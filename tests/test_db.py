@@ -58,3 +58,16 @@ def test_types_are_stored_as_json(temp_db):
 
 def test_get_pokemon_not_found(temp_db):
     assert db.get_pokemon("noexiste", temp_db) is None
+
+
+def test_get_pokemon_returns_all_fields(temp_db):
+    db.save_pokemon(make_pokemon(25, "pikachu", ["electric"]), temp_db)
+    row = db.get_pokemon("pikachu", temp_db)
+
+    assert row is not None
+    assert row["id"] == 25
+    assert row["name"] == "pikachu"
+    assert row["height"] == 10
+    assert row["weight"] == 100
+    assert json.loads(row["types"]) == ["electric"]
+    assert row["fetched_at"] is not None

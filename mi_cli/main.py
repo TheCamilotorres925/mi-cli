@@ -52,5 +52,29 @@ def list_cmd():
         typer.echo(f"{row['id']:>4}  {row['name']:<12}  {types}  ({row['fetched_at']})")
 
 
+@app.command(name="show")
+def show_cmd(
+    name: str = typer.Argument(..., help="Nombre del Pokémon guardado"),
+):
+    """Muestra el detalle de un Pokémon desde SQLite."""
+    db.init_db()
+    row = db.get_pokemon(name)
+    if row is None:
+        typer.secho(
+            f"No está guardado: {name}. Usa `fetch {name}` primero.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    types = ", ".join(json.loads(row["types"]))
+    typer.echo(f"Name:    {row['name']}")
+    typer.echo(f"ID:      {row['id']}")
+    typer.echo(f"Height:  {row['height']}")
+    typer.echo(f"Weight:  {row['weight']}")
+    typer.echo(f"Types:   {types}")
+    typer.echo(f"Fetched: {row['fetched_at']}")
+
+
 if __name__ == "__main__":
     app()

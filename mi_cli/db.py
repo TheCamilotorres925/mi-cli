@@ -5,11 +5,40 @@ from pathlib import Path
 DB_PATH = Path("data.db")
 
 
+class DatabaseError(Exception):
+    """Error al abrir o inicializar la base de datos."""
+
+
 def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     path = Path(db_path) if db_path else DB_PATH
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     return con
+
+
+def ensure_db_ready(db_path: Path | str | None = None) -> Path:
+    """Valida la ruta de la DB y la inicializa si hace falta.
+
+    Devuelve la ruta resuelta. Lanza DatabaseError con un mensaje útil
+    si algo no permite abrir o crear la base de datos.
+    """
+    path = Path(db_path) if db_path else DB_PATH
+
+    if path.exists() and path.is_dir():
+        raise DatabaseError(f"La ruta es un directorio, no un archivo: {path}")
+
+    parent = path.parent
+    if not parent.exists():
+        raise DatabaseError(f"La carpeta no existe: {parent}")
+
+    try:
+        init_db(path)
+    except sqlite3.OperationalError as exc:
+        raise DatabaseError(f"No se pudo abrir {path}: {exc}") from exc
+    except sqlite3.DatabaseError as exc:
+        raise DatabaseError(f"El archivo no es una base SQLite válida: {path}") from exc
+
+    return path
 
 
 def init_db(db_path: Path | str | None = None) -> None:

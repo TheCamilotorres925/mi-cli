@@ -20,11 +20,19 @@ def main(
     ctx.obj = {"db_path": db_path}
 
 
+def _resolve_db(ctx: typer.Context) -> str:
+    """Valida la DB y devuelve la ruta, o sale con error claro."""
+    try:
+        return str(db.ensure_db_ready(ctx.obj["db_path"]))
+    except db.DatabaseError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+
 @app.command(name="init")
 def init_cmd(ctx: typer.Context):
     """Crea la base de datos y la tabla pokemon."""
-    db_path = ctx.obj["db_path"]
-    db.init_db(db_path)
+    db_path = _resolve_db(ctx)
     typer.echo(f"Base de datos inicializada en {db_path}")
 
 
@@ -34,8 +42,7 @@ def fetch_cmd(
     name: str = typer.Argument(..., help="Nombre o id del Pokémon"),
 ):
     """Consume PokéAPI y guarda el Pokémon en SQLite."""
-    db_path = ctx.obj["db_path"]
-    db.init_db(db_path)
+    db_path = _resolve_db(ctx)
     try:
         data = api.fetch_pokemon(name)
     except api.PokemonAPIError as exc:
@@ -52,8 +59,7 @@ def fetch_cmd(
 @app.command(name="list")
 def list_cmd(ctx: typer.Context):
     """Lista los Pokémon guardados en SQLite."""
-    db_path = ctx.obj["db_path"]
-    db.init_db(db_path)
+    db_path = _resolve_db(ctx)
     rows = db.list_pokemon(db_path)
     if not rows:
         typer.echo("No hay Pokémon guardados. Usa `fetch <nombre>` primero.")
@@ -70,8 +76,7 @@ def show_cmd(
     name: str = typer.Argument(..., help="Nombre del Pokémon guardado"),
 ):
     """Muestra el detalle de un Pokémon desde SQLite."""
-    db_path = ctx.obj["db_path"]
-    db.init_db(db_path)
+    db_path = _resolve_db(ctx)
     row = db.get_pokemon(name, db_path)
     if row is None:
         typer.secho(

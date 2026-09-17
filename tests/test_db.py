@@ -71,3 +71,31 @@ def test_get_pokemon_returns_all_fields(temp_db):
     assert row["weight"] == 100
     assert json.loads(row["types"]) == ["electric"]
     assert row["fetched_at"] is not None
+
+
+def test_ensure_db_ready_creates_new_db(tmp_path):
+    db_path = tmp_path / "nueva.db"
+    result = db.ensure_db_ready(db_path)
+
+    assert result == db_path
+    assert db_path.exists()
+
+
+def test_ensure_db_ready_rejects_directory(tmp_path):
+    with pytest.raises(db.DatabaseError, match="directorio"):
+        db.ensure_db_ready(tmp_path)
+
+
+def test_ensure_db_ready_rejects_missing_parent(tmp_path):
+    db_path = tmp_path / "no_existe" / "data.db"
+
+    with pytest.raises(db.DatabaseError, match="carpeta no existe"):
+        db.ensure_db_ready(db_path)
+
+
+def test_ensure_db_ready_rejects_invalid_sqlite(tmp_path):
+    bad = tmp_path / "bad.db"
+    bad.write_text("esto no es sqlite")
+
+    with pytest.raises(db.DatabaseError, match="no es una base SQLite válida"):
+        db.ensure_db_ready(bad)

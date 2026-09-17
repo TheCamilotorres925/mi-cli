@@ -67,3 +67,37 @@ def test_fetch_pokemon_network_error(monkeypatch):
 
     with pytest.raises(api.PokemonAPIError, match="Error de red"):
         api.fetch_pokemon("pikachu")
+
+
+def test_list_pokemon_names_ok(monkeypatch):
+    payload = {
+        "results": [
+            {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon/1/"},
+            {"name": "ivysaur", "url": "https://pokeapi.co/api/v2/pokemon/2/"},
+        ]
+    }
+    captured = {}
+
+    def fake_get(url, params, timeout):
+        captured["url"] = url
+        captured["params"] = params
+        return FakeResponse(200, payload)
+
+    monkeypatch.setattr(api.httpx, "get", fake_get)
+    results = api.list_pokemon_names(limit=2, offset=0)
+
+    assert captured["url"].endswith("/pokemon")
+    assert captured["params"] == {"limit": 2, "offset": 0}
+    assert len(results) == 2
+    assert results[0]["name"] == "bulbasaur"
+
+
+def test_list_pokemon_names_error(monkeypatch):
+    monkeypatch.setattr(
+        api.httpx,
+        "get",
+        lambda url, params, timeout: FakeResponse(500),
+    )
+
+    with pytest.raises(api.PokemonAPIError, match="Respuesta inesperada"):
+        api.list_pokemon_names()

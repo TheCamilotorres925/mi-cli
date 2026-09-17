@@ -95,5 +95,55 @@ def show_cmd(
     typer.echo(f"Fetched: {row['fetched_at']}")
 
 
+@app.command(name="sync")
+def sync_cmd(
+    ctx: typer.Context,
+    limit: int = typer.Option(
+        20,
+        "--limit",
+        "-n",
+        help="Número de Pokémon a sincronizar",
+        min=1,
+    ),
+    offset: int = typer.Option(
+        0,
+        "--offset",
+        help="Desde qué posición empezar",
+        min=0,
+    ),
+):
+    """Trae Pokémon desde PokéAPI y los guarda en SQLite."""
+    db_path = _resolve_db(ctx)
+
+    try:
+        names = api.list_pokemon_names(limit=limit, offset=offset)
+    except api.PokemonAPIError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    saved = 0
+    failed = 0
+
+    with typer.progressbar(names, label="Sincronizando") as progress:
+        for entry in progress:
+            name = entry["name"]
+            try:
+                data = api.fetch_pokemon(name)
+                db.save_pokemon(data, db_path)
+                saved += 1
+            except api.PokemonAPIError as exc:
+                failed += 1
+                typer.secho(
+                    f"\nError con {name}: {exc}",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
+
+    typer.secho(
+        f"Listo. Guardados: {saved}. Fallidos: {failed}.",
+        fg=typer.colors.GREEN if failed == 0 else typer.colors.YELLOW,
+    )
+
+
 if __name__ == "__main__":
     app()

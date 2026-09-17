@@ -29,6 +29,9 @@ CLI that consumes [PokéAPI](https://pokeapi.co/) and stores data in SQLite.
     python -m mi_cli.main fetch pikachu
     python -m mi_cli.main fetch charmander
     python -m mi_cli.main list
+    python -m mi_cli.main --db custom.db init
+    python -m mi_cli.main --db custom.db fetch pikachu
+    python -m mi_cli.main --db custom.db list
 
 ## Development
 

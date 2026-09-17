@@ -8,30 +8,41 @@ app = typer.Typer()
 
 
 @app.callback()
-def main():
+def main(
+    ctx: typer.Context,
+    db_path: str = typer.Option(
+        "data.db",
+        "--db",
+        help="Ruta al archivo SQLite (por defecto: data.db)",
+    ),
+):
     """CLI para gestionar datos de Pokémon."""
+    ctx.obj = {"db_path": db_path}
 
 
 @app.command(name="init")
-def init_cmd():
+def init_cmd(ctx: typer.Context):
     """Crea la base de datos y la tabla pokemon."""
-    db.init_db()
-    typer.echo(f"Base de datos inicializada en {db.DB_PATH}")
+    db_path = ctx.obj["db_path"]
+    db.init_db(db_path)
+    typer.echo(f"Base de datos inicializada en {db_path}")
 
 
 @app.command(name="fetch")
 def fetch_cmd(
+    ctx: typer.Context,
     name: str = typer.Argument(..., help="Nombre o id del Pokémon"),
 ):
     """Consume PokéAPI y guarda el Pokémon en SQLite."""
-    db.init_db()
+    db_path = ctx.obj["db_path"]
+    db.init_db(db_path)
     try:
         data = api.fetch_pokemon(name)
     except api.PokemonAPIError as exc:
         typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from None
 
-    db.save_pokemon(data)
+    db.save_pokemon(data, db_path)
     typer.secho(
         f"Guardado: {data['name']} (id={data['id']})",
         fg=typer.colors.GREEN,
@@ -39,10 +50,11 @@ def fetch_cmd(
 
 
 @app.command(name="list")
-def list_cmd():
+def list_cmd(ctx: typer.Context):
     """Lista los Pokémon guardados en SQLite."""
-    db.init_db()
-    rows = db.list_pokemon()
+    db_path = ctx.obj["db_path"]
+    db.init_db(db_path)
+    rows = db.list_pokemon(db_path)
     if not rows:
         typer.echo("No hay Pokémon guardados. Usa `fetch <nombre>` primero.")
         raise typer.Exit()
@@ -54,11 +66,13 @@ def list_cmd():
 
 @app.command(name="show")
 def show_cmd(
+    ctx: typer.Context,
     name: str = typer.Argument(..., help="Nombre del Pokémon guardado"),
 ):
     """Muestra el detalle de un Pokémon desde SQLite."""
-    db.init_db()
-    row = db.get_pokemon(name)
+    db_path = ctx.obj["db_path"]
+    db.init_db(db_path)
+    row = db.get_pokemon(name, db_path)
     if row is None:
         typer.secho(
             f"No está guardado: {name}. Usa `fetch {name}` primero.",

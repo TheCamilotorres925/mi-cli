@@ -7,6 +7,18 @@ from mi_cli import api, db
 app = typer.Typer()
 
 
+def _row_to_dict(row) -> dict:
+    """Convierte una fila de SQLite en un dict serializable."""
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "height": row["height"],
+        "weight": row["weight"],
+        "types": json.loads(row["types"]),
+        "fetched_at": row["fetched_at"],
+    }
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -57,13 +69,36 @@ def fetch_cmd(
 
 
 @app.command(name="list")
-def list_cmd(ctx: typer.Context):
+def list_cmd(
+    ctx: typer.Context,
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Salida en formato JSON",
+    ),
+):
     """Lista los Pokémon guardados en SQLite."""
     db_path = _resolve_db(ctx)
     rows = db.list_pokemon(db_path)
     if not rows:
-        typer.echo("No hay Pokémon guardados. Usa `fetch <nombre>` primero.")
+        if as_json:
+            typer.echo("[]")
+        else:
+            typer.echo("No hay Pokémon guardados. Usa `fetch <nombre>` primero.")
         raise typer.Exit()
+
+    if as_json:
+        data = [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "types": json.loads(row["types"]),
+                "fetched_at": row["fetched_at"],
+            }
+            for row in rows
+        ]
+        typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
 
     for row in rows:
         types = ", ".join(json.loads(row["types"]))
@@ -74,17 +109,29 @@ def list_cmd(ctx: typer.Context):
 def show_cmd(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Nombre del Pokémon guardado"),
+    as_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Salida en formato JSON",
+    ),
 ):
     """Muestra el detalle de un Pokémon desde SQLite."""
     db_path = _resolve_db(ctx)
     row = db.get_pokemon(name, db_path)
     if row is None:
-        typer.secho(
-            f"No está guardado: {name}. Usa `fetch {name}` primero.",
-            fg=typer.colors.RED,
-            err=True,
-        )
+        if as_json:
+            typer.echo("null")
+        else:
+            typer.secho(
+                f"No está guardado: {name}. Usa `fetch {name}` primero.",
+                fg=typer.colors.RED,
+                err=True,
+            )
         raise typer.Exit(code=1)
+
+    if as_json:
+        typer.echo(json.dumps(_row_to_dict(row), ensure_ascii=False, indent=2))
+        return
 
     types = ", ".join(json.loads(row["types"]))
     typer.echo(f"Name:    {row['name']}")

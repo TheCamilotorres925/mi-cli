@@ -99,3 +99,24 @@ def test_ensure_db_ready_rejects_invalid_sqlite(tmp_path):
 
     with pytest.raises(db.DatabaseError, match="no es una base SQLite válida"):
         db.ensure_db_ready(bad)
+
+
+def test_get_pokemon_row_is_dict_serializable(temp_db):
+    db.save_pokemon(make_pokemon(25, "pikachu", ["electric", "flying"]), temp_db)
+    row = db.get_pokemon("pikachu", temp_db)
+
+    assert row is not None
+    data = {
+        "id": row["id"],
+        "name": row["name"],
+        "height": row["height"],
+        "weight": row["weight"],
+        "types": json.loads(row["types"]),
+        "fetched_at": row["fetched_at"],
+    }
+    serialized = json.dumps(data)
+    parsed = json.loads(serialized)
+
+    assert parsed["name"] == "pikachu"
+    assert parsed["types"] == ["electric", "flying"]
+    assert isinstance(parsed["id"], int)

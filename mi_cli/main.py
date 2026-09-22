@@ -123,26 +123,40 @@ def sync_cmd(
 
     saved = 0
     failed = 0
+    interrupted = False
+    last_processed = offset
 
-    with typer.progressbar(names, label="Sincronizando") as progress:
-        for entry in progress:
-            name = entry["name"]
-            try:
-                data = api.fetch_pokemon(name)
-                db.save_pokemon(data, db_path)
-                saved += 1
-            except api.PokemonAPIError as exc:
-                failed += 1
-                typer.secho(
-                    f"\nError con {name}: {exc}",
-                    fg=typer.colors.YELLOW,
-                    err=True,
-                )
+    try:
+        with typer.progressbar(names, label="Sincronizando") as progress:
+            for entry in progress:
+                name = entry["name"]
+                last_processed += 1
+                try:
+                    data = api.fetch_pokemon(name)
+                    db.save_pokemon(data, db_path)
+                    saved += 1
+                except api.PokemonAPIError as exc:
+                    failed += 1
+                    typer.secho(
+                        f"\nError con {name}: {exc}",
+                        fg=typer.colors.YELLOW,
+                        err=True,
+                    )
+    except KeyboardInterrupt:
+        interrupted = True
+        typer.secho("\nInterrumpido por el usuario.", fg=typer.colors.YELLOW)
 
     typer.secho(
         f"Listo. Guardados: {saved}. Fallidos: {failed}.",
         fg=typer.colors.GREEN if failed == 0 else typer.colors.YELLOW,
     )
+
+    if interrupted:
+        typer.echo(
+            f"Puedes continuar desde --offset {last_processed} "
+            f"(el último Pokémon procesado fue el índice {last_processed - 1})."
+        )
+        raise typer.Exit(code=130) from None
 
 
 if __name__ == "__main__":

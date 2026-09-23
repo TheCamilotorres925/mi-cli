@@ -1,4 +1,5 @@
 import json
+import time
 
 import typer
 
@@ -158,6 +159,12 @@ def sync_cmd(
         help="Desde qué posición empezar",
         min=0,
     ),
+    sleep_ms: int = typer.Option(
+        100,
+        "--sleep",
+        help="Milisegundos a esperar entre requests",
+        min=0,
+    ),
 ):
     """Trae Pokémon desde PokéAPI y los guarda en SQLite."""
     db_path = _resolve_db(ctx)
@@ -172,10 +179,11 @@ def sync_cmd(
     failed = 0
     interrupted = False
     last_processed = offset
+    total = len(names)
 
     try:
         with typer.progressbar(names, label="Sincronizando") as progress:
-            for entry in progress:
+            for index, entry in enumerate(progress):
                 name = entry["name"]
                 last_processed += 1
                 try:
@@ -189,6 +197,9 @@ def sync_cmd(
                         fg=typer.colors.YELLOW,
                         err=True,
                     )
+
+                if sleep_ms > 0 and index < total - 1:
+                    time.sleep(sleep_ms / 1000)
     except KeyboardInterrupt:
         interrupted = True
         typer.secho("\nInterrumpido por el usuario.", fg=typer.colors.YELLOW)

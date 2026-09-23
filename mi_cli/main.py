@@ -165,6 +165,12 @@ def sync_cmd(
         help="Milisegundos a esperar entre requests",
         min=0,
     ),
+    retries: int = typer.Option(
+        2,
+        "--retries",
+        help="Reintentos por Pokémon ante errores temporales",
+        min=0,
+    ),
 ):
     """Trae Pokémon desde PokéAPI y los guarda en SQLite."""
     db_path = _resolve_db(ctx)
@@ -187,7 +193,7 @@ def sync_cmd(
                 name = entry["name"]
                 last_processed += 1
                 try:
-                    data = api.fetch_pokemon(name)
+                    data = api.fetch_pokemon_with_retries(name, retries=retries)
                     db.save_pokemon(data, db_path)
                     saved += 1
                 except api.PokemonAPIError as exc:

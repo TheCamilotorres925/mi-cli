@@ -92,12 +92,67 @@ def test_list_pokemon_names_ok(monkeypatch):
     assert results[0]["name"] == "bulbasaur"
 
 
-def test_list_pokemon_names_error(monkeypatch):
+def test_list_pokemon_names_server_error(monkeypatch):
     monkeypatch.setattr(
         api.httpx,
         "get",
         lambda url, params, timeout: FakeResponse(500),
     )
 
-    with pytest.raises(api.PokemonAPIError, match="Respuesta inesperada"):
+    with pytest.raises(api.TransientAPIError, match="Error del servidor"):
+        api.list_pokemon_names()
+
+
+def test_fetch_with_retries_succeeds_on_second_attempt(monkeypatch):
+    attempts = {"count": 0}
+
+    def fake_get(url, timeout):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise httpx.TimeoutException("boom")
+        return FakeResponse(200, {"id": 25, "name": "pikachu", "types": []})
+
+    monkeypatch.setattr(api.httpx, "get", fake_get)
+    monkeypatch.setattr(api.time, "sleep", lambda _: None)  # no dormir en tests
+
+    result = api.fetch_pokemon_with_retries("pikachu", retries=2)
+    assert result["name"] == "pikachu"
+    assert attempts["count"] == 2
+
+
+def test_fetch_with_retries_exhausts(monkeypatch):
+    def always_timeout(url, timeout):
+        raise httpx.TimeoutException("boom")
+
+    monkeypatch.setattr(api.httpx, "get", always_timeout)
+    monkeypatch.setattr(api.time, "sleep", lambda _: None)
+
+    with pytest.raises(api.TransientAPIError, match="Timeout"):
+        api.fetch_pokemon_with_retries("pikachu", retries=2)
+
+
+def test_fetch_with_retries_does_not_retry_404(monkeypatch):
+    attempts = {"count": 0}
+
+    def fake_get(url, timeout):
+        attempts["count"] += 1
+        return FakeResponse(404)
+
+    monkeypatch.setattr(api.httpx, "get", fake_get)
+    monkeypatch.setattr(api.time, "sleep", lambda _: None)
+
+    with pytest.raises(api.PermanentAPIError, match="no encontrado"):
+        api.fetch_pokemon_with_retries("noexiste", retries=2)
+
+    assert attempts["count"] == 1  # solo un intento, no reintenta
+
+
+def test_list_pokemon_names_client_error(monkeypatch):
+    monkeypatch.setattr(
+        api.httpx,
+        "get",
+        lambda url, params, timeout: FakeResponse(400),
+    )
+
+    with pytest.raises(api.PermanentAPIError, match="Respuesta inesperada"):
         api.list_pokemon_names()

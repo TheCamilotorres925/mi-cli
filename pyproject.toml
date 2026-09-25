@@ -12,6 +12,7 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
     "mypy>=1.11",
+    "coverage>=7.6",
 ]
 
 [tool.pytest.ini_options]
@@ -31,3 +32,15 @@ strict = false
 warn_unused_ignores = true
 warn_redundant_casts = true
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["mi_cli"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 60
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

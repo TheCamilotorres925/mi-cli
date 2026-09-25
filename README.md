@@ -35,6 +35,11 @@ CLI that consumes [PokéAPI](https://pokeapi.co/) and stores data in SQLite.
     python -m mi_cli.main sync --limit 20
     python -m mi_cli.main sync --limit 20 --offset 20
     `sync` trae los Pokémon desde PokéAPI y los guarda en lote. Los que ya existan se actualizan (idempotente).
+    python -m mi_cli.main list --json
+    python -m mi_cli.main show pikachu --json
+    Both `list` and `show` support `--json` for machine-readable output.
+    python -m mi_cli.main sync --limit 20 --sleep 200
+    `sync` waits `--sleep` milliseconds between requests (default: 100) to be gentle with the API.
 
 ## Development
 

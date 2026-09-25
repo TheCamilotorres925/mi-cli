@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 import pytest
 
@@ -120,3 +121,15 @@ def test_get_pokemon_row_is_dict_serializable(temp_db):
     assert parsed["name"] == "pikachu"
     assert parsed["types"] == ["electric", "flying"]
     assert isinstance(parsed["id"], int)
+
+
+def test_ensure_db_ready_handles_operational_error(tmp_path, monkeypatch):
+    def raise_operational_error(*args, **kwargs):
+        raise sqlite3.OperationalError("permiso denegado")
+
+    monkeypatch.setattr(db.sqlite3, "connect", raise_operational_error)
+
+    db_path = tmp_path / "test.db"
+
+    with pytest.raises(db.DatabaseError, match="No se pudo abrir"):
+        db.ensure_db_ready(db_path)

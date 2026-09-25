@@ -156,3 +156,34 @@ def test_list_pokemon_names_client_error(monkeypatch):
 
     with pytest.raises(api.PermanentAPIError, match="Respuesta inesperada"):
         api.list_pokemon_names()
+
+
+def test_list_pokemon_names_timeout(monkeypatch):
+    def raise_timeout(url, params, timeout):
+        raise httpx.TimeoutException("boom")
+
+    monkeypatch.setattr(api.httpx, "get", raise_timeout)
+
+    with pytest.raises(api.TransientAPIError, match="Timeout"):
+        api.list_pokemon_names()
+
+
+def test_list_pokemon_names_network_error(monkeypatch):
+    def raise_request_error(url, params, timeout):
+        raise httpx.RequestError("sin red")
+
+    monkeypatch.setattr(api.httpx, "get", raise_request_error)
+
+    with pytest.raises(api.TransientAPIError, match="Error de red"):
+        api.list_pokemon_names()
+
+
+def test_fetch_with_retries_zero_retries(monkeypatch):
+    def always_timeout(url, timeout):
+        raise httpx.TimeoutException("boom")
+
+    monkeypatch.setattr(api.httpx, "get", always_timeout)
+    monkeypatch.setattr(api.time, "sleep", lambda _: None)
+
+    with pytest.raises(api.TransientAPIError, match="Timeout"):
+        api.fetch_pokemon_with_retries("pikachu", retries=0)

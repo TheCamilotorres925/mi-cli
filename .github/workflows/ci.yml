@@ -43,4 +43,7 @@ jobs:
           coverage run -m pytest
           coverage report -m --fail-under=60
 
+      - name: Run pre-commit hooks
+        run: pre-commit run --all-files          
+
       

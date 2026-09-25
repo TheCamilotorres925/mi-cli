@@ -95,3 +95,30 @@ def get_pokemon(name: str, db_path: Path | str | None = None) -> sqlite3.Row | N
             "SELECT * FROM pokemon WHERE name = ?",
             (name.lower(),),
         ).fetchone()
+
+
+def find_pokemon(
+    name_contains: str | None = None,
+    type_name: str | None = None,
+    db_path: Path | str | None = None,
+) -> list[sqlite3.Row]:
+    """Busca Pokémon por nombre parcial o tipo.
+
+    Los filtros se combinan con AND. Si no se pasa ninguno, devuelve todos.
+    """
+    with get_connection(db_path) as con:
+        rows = con.execute(
+            "SELECT id, name, types, fetched_at FROM pokemon ORDER BY id"
+        ).fetchall()
+
+    result = list(rows)
+
+    if name_contains:
+        needle = name_contains.strip().lower()
+        result = [r for r in result if needle in r["name"].lower()]
+
+    if type_name:
+        needle = type_name.strip().lower()
+        result = [r for r in result if needle in json.loads(r["types"])]
+
+    return result

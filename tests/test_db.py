@@ -133,3 +133,63 @@ def test_ensure_db_ready_handles_operational_error(tmp_path, monkeypatch):
 
     with pytest.raises(db.DatabaseError, match="No se pudo abrir"):
         db.ensure_db_ready(db_path)
+
+
+def test_find_pokemon_no_filters(temp_db):
+    db.save_pokemon(make_pokemon(1, "bulbasaur", ["grass", "poison"]), temp_db)
+    db.save_pokemon(make_pokemon(4, "charmander", ["fire"]), temp_db)
+    db.save_pokemon(make_pokemon(7, "squirtle", ["water"]), temp_db)
+
+    rows = db.find_pokemon(db_path=temp_db)
+    assert len(rows) == 3
+
+
+def test_find_pokemon_by_type(temp_db):
+    db.save_pokemon(make_pokemon(1, "bulbasaur", ["grass", "poison"]), temp_db)
+    db.save_pokemon(make_pokemon(4, "charmander", ["fire"]), temp_db)
+    db.save_pokemon(make_pokemon(7, "squirtle", ["water"]), temp_db)
+
+    rows = db.find_pokemon(type_name="fire", db_path=temp_db)
+    assert len(rows) == 1
+    assert rows[0]["name"] == "charmander"
+
+
+def test_find_pokemon_by_type_matches_secondary(temp_db):
+    db.save_pokemon(make_pokemon(6, "charizard", ["fire", "flying"]), temp_db)
+
+    rows = db.find_pokemon(type_name="flying", db_path=temp_db)
+    assert len(rows) == 1
+    assert rows[0]["name"] == "charizard"
+
+
+def test_find_pokemon_by_name_partial(temp_db):
+    db.save_pokemon(make_pokemon(4, "charmander", ["fire"]), temp_db)
+    db.save_pokemon(make_pokemon(5, "charmeleon", ["fire"]), temp_db)
+    db.save_pokemon(make_pokemon(7, "squirtle", ["water"]), temp_db)
+
+    rows = db.find_pokemon(name_contains="char", db_path=temp_db)
+    assert len(rows) == 2
+
+
+def test_find_pokemon_name_is_case_insensitive(temp_db):
+    db.save_pokemon(make_pokemon(4, "charmander", ["fire"]), temp_db)
+
+    rows = db.find_pokemon(name_contains="CHAR", db_path=temp_db)
+    assert len(rows) == 1
+
+
+def test_find_pokemon_combines_filters(temp_db):
+    db.save_pokemon(make_pokemon(4, "charmander", ["fire"]), temp_db)
+    db.save_pokemon(make_pokemon(7, "squirtle", ["water"]), temp_db)
+    db.save_pokemon(make_pokemon(8, "wartortle", ["water"]), temp_db)
+
+    rows = db.find_pokemon(name_contains="squ", type_name="water", db_path=temp_db)
+    assert len(rows) == 1
+    assert rows[0]["name"] == "squirtle"
+
+
+def test_find_pokemon_no_matches(temp_db):
+    db.save_pokemon(make_pokemon(4, "charmander", ["fire"]), temp_db)
+
+    rows = db.find_pokemon(name_contains="zzz", db_path=temp_db)
+    assert rows == []

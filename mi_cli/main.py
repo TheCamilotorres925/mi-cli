@@ -77,15 +77,31 @@ def list_cmd(
         "--json",
         help="Salida en formato JSON",
     ),
+    type_name: str | None = typer.Option(
+        None,
+        "--type",
+        "-t",
+        help="Filtrar por tipo (ej: fire, water)",
+    ),
+    name_contains: str | None = typer.Option(
+        None,
+        "--name",
+        help="Filtrar por nombre parcial (case-insensitive)",
+    ),
 ):
-    """Lista los Pokémon guardados en SQLite."""
+    """Lista los Pokémon guardados en SQLite, con filtros opcionales."""
     db_path = _resolve_db(ctx)
-    rows = db.list_pokemon(db_path)
+    rows = db.find_pokemon(
+        name_contains=name_contains,
+        type_name=type_name,
+        db_path=db_path,
+    )
+
     if not rows:
         if as_json:
             typer.echo("[]")
         else:
-            typer.echo("No hay Pokémon guardados. Usa `fetch <nombre>` primero.")
+            typer.echo("No hay Pokémon que coincidan.")
         raise typer.Exit()
 
     if as_json:

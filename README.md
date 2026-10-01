@@ -58,3 +58,8 @@ Check formatting:
 Run type checker:
 
     mypy mi_cli
+
+
+## Caching
+
+`fetch` and `sync` use ETag-based caching. When the resource hasn't changed since the last fetch, PokéAPI responds with `304 Not Modified` and the local data is left untouched.

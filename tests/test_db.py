@@ -193,3 +193,21 @@ def test_find_pokemon_no_matches(temp_db):
 
     rows = db.find_pokemon(name_contains="zzz", db_path=temp_db)
     assert rows == []
+
+
+def test_save_and_get_etag(temp_db):
+    poke = make_pokemon(25, "pikachu", ["electric"])
+    db.save_pokemon(poke, temp_db, etag='"abc"')
+
+    assert db.get_etag("pikachu", temp_db) == '"abc"'
+
+
+def test_get_etag_not_found(temp_db):
+    assert db.get_etag("noexiste", temp_db) is None
+
+
+def test_save_pokemon_without_etag(temp_db):
+    poke = make_pokemon(25, "pikachu", ["electric"])
+    db.save_pokemon(poke, temp_db)
+
+    assert db.get_etag("pikachu", temp_db) is None

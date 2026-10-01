@@ -5,9 +5,15 @@ from mi_cli import api
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, payload: dict | None = None):
+    def __init__(
+        self,
+        status_code: int,
+        payload: dict | None = None,
+        headers: dict | None = None,
+    ):
         self.status_code = status_code
         self._payload = payload or {}
+        self.headers = headers or {}
 
     def json(self) -> dict:
         return self._payload
@@ -18,17 +24,18 @@ def test_fetch_pokemon_ok(monkeypatch):
     monkeypatch.setattr(
         api.httpx,
         "get",
-        lambda url, timeout: FakeResponse(200, payload),
+        lambda url, timeout, headers: FakeResponse(200, payload, {"ETag": '"abc"'}),
     )
 
-    result = api.fetch_pokemon("pikachu")
-    assert result["name"] == "pikachu"
+    data, etag = api.fetch_pokemon("pikachu")
+    assert data["name"] == "pikachu"
+    assert etag == '"abc"'
 
 
 def test_fetch_pokemon_normalizes_name(monkeypatch):
     captured = {}
 
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, headers):
         captured["url"] = url
         return FakeResponse(200, {"id": 25, "name": "pikachu"})
 
@@ -42,7 +49,7 @@ def test_fetch_pokemon_not_found(monkeypatch):
     monkeypatch.setattr(
         api.httpx,
         "get",
-        lambda url, timeout: FakeResponse(404),
+        lambda url, timeout, headers: FakeResponse(404),
     )
 
     with pytest.raises(api.PokemonAPIError, match="no encontrado"):
@@ -50,7 +57,7 @@ def test_fetch_pokemon_not_found(monkeypatch):
 
 
 def test_fetch_pokemon_timeout(monkeypatch):
-    def raise_timeout(url, timeout):
+    def raise_timeout(url, timeout, headers):
         raise httpx.TimeoutException("boom")
 
     monkeypatch.setattr(api.httpx, "get", raise_timeout)
@@ -60,7 +67,7 @@ def test_fetch_pokemon_timeout(monkeypatch):
 
 
 def test_fetch_pokemon_network_error(monkeypatch):
-    def raise_request_error(url, timeout):
+    def raise_request_error(url, timeout, headers):
         raise httpx.RequestError("sin red")
 
     monkeypatch.setattr(api.httpx, "get", raise_request_error)
@@ -106,7 +113,7 @@ def test_list_pokemon_names_server_error(monkeypatch):
 def test_fetch_with_retries_succeeds_on_second_attempt(monkeypatch):
     attempts = {"count": 0}
 
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, headers):
         attempts["count"] += 1
         if attempts["count"] == 1:
             raise httpx.TimeoutException("boom")
@@ -115,13 +122,13 @@ def test_fetch_with_retries_succeeds_on_second_attempt(monkeypatch):
     monkeypatch.setattr(api.httpx, "get", fake_get)
     monkeypatch.setattr(api.time, "sleep", lambda _: None)  # no dormir en tests
 
-    result = api.fetch_pokemon_with_retries("pikachu", retries=2)
-    assert result["name"] == "pikachu"
+    data, etag = api.fetch_pokemon_with_retries("pikachu", retries=2)
+    assert data["name"] == "pikachu"
     assert attempts["count"] == 2
 
 
 def test_fetch_with_retries_exhausts(monkeypatch):
-    def always_timeout(url, timeout):
+    def always_timeout(url, timeout, headers):
         raise httpx.TimeoutException("boom")
 
     monkeypatch.setattr(api.httpx, "get", always_timeout)
@@ -134,7 +141,7 @@ def test_fetch_with_retries_exhausts(monkeypatch):
 def test_fetch_with_retries_does_not_retry_404(monkeypatch):
     attempts = {"count": 0}
 
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, headers):
         attempts["count"] += 1
         return FakeResponse(404)
 
@@ -179,7 +186,7 @@ def test_list_pokemon_names_network_error(monkeypatch):
 
 
 def test_fetch_with_retries_zero_retries(monkeypatch):
-    def always_timeout(url, timeout):
+    def always_timeout(url, timeout, headers):
         raise httpx.TimeoutException("boom")
 
     monkeypatch.setattr(api.httpx, "get", always_timeout)
@@ -187,3 +194,28 @@ def test_fetch_with_retries_zero_retries(monkeypatch):
 
     with pytest.raises(api.TransientAPIError, match="Timeout"):
         api.fetch_pokemon_with_retries("pikachu", retries=0)
+
+
+def test_fetch_pokemon_not_modified(monkeypatch):
+    monkeypatch.setattr(
+        api.httpx,
+        "get",
+        lambda url, timeout, headers: FakeResponse(304, headers={}),
+    )
+
+    data, etag = api.fetch_pokemon("pikachu", etag='"abc"')
+    assert data is None
+    assert etag == '"abc"'
+
+
+def test_fetch_pokemon_sends_if_none_match(monkeypatch):
+    captured = {}
+
+    def fake_get(url, timeout, headers):
+        captured["headers"] = headers
+        return FakeResponse(200, {"id": 25, "name": "pikachu", "types": []})
+
+    monkeypatch.setattr(api.httpx, "get", fake_get)
+    api.fetch_pokemon("pikachu", etag='"abc"')
+
+    assert captured["headers"]["If-None-Match"] == '"abc"'

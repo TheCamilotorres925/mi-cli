@@ -51,24 +51,34 @@ def init_db(db_path: Path | str | None = None) -> None:
             weight INTEGER,
             types TEXT,
             raw_json TEXT NOT NULL,
+            etag TEXT,
             fetched_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
 
+        columns = {row["name"] for row in con.execute("PRAGMA table_info(pokemon)")}
+        if "etag" not in columns:
+            con.execute("ALTER TABLE pokemon ADD COLUMN etag TEXT")
 
-def save_pokemon(data: dict, db_path: Path | str | None = None) -> None:
+
+def save_pokemon(
+    data: dict,
+    db_path: Path | str | None = None,
+    etag: str | None = None,
+) -> None:
     types = json.dumps([t["type"]["name"] for t in data["types"]])
     with get_connection(db_path) as con:
         con.execute(
             """
-        INSERT INTO pokemon (id, name, height, weight, types, raw_json)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO pokemon (id, name, height, weight, types, raw_json, etag)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             name=excluded.name,
             height=excluded.height,
             weight=excluded.weight,
             types=excluded.types,
             raw_json=excluded.raw_json,
+            etag=excluded.etag,
             fetched_at=CURRENT_TIMESTAMP
         """,
             (
@@ -78,6 +88,7 @@ def save_pokemon(data: dict, db_path: Path | str | None = None) -> None:
                 data["weight"],
                 types,
                 json.dumps(data),
+                etag,
             ),
         )
 
@@ -122,3 +133,13 @@ def find_pokemon(
         result = [r for r in result if needle in json.loads(r["types"])]
 
     return result
+
+
+def get_etag(name: str, db_path: Path | str | None = None) -> str | None:
+    """Devuelve el ETag guardado para un Pokémon, o None si no existe."""
+    with get_connection(db_path) as con:
+        row = con.execute(
+            "SELECT etag FROM pokemon WHERE name = ?",
+            (name.lower(),),
+        ).fetchone()
+    return row["etag"] if row else None

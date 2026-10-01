@@ -56,13 +56,23 @@ def fetch_cmd(
 ):
     """Consume PokéAPI y guarda el Pokémon en SQLite."""
     db_path = _resolve_db(ctx)
+
+    etag = db.get_etag(name, db_path)
+
     try:
-        data = api.fetch_pokemon(name)
+        data, new_etag = api.fetch_pokemon(name, etag=etag)
     except api.PokemonAPIError as exc:
         typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from None
 
-    db.save_pokemon(data, db_path)
+    if data is None:
+        typer.secho(
+            f"Sin cambios: {name} (usando caché)",
+            fg=typer.colors.BLUE,
+        )
+        return
+
+    db.save_pokemon(data, db_path, etag=new_etag)
     typer.secho(
         f"Guardado: {data['name']} (id={data['id']})",
         fg=typer.colors.GREEN,
@@ -209,9 +219,15 @@ def sync_cmd(
                 name = entry["name"]
                 last_processed += 1
                 try:
-                    data = api.fetch_pokemon_with_retries(name, retries=retries)
-                    db.save_pokemon(data, db_path)
-                    saved += 1
+                    etag = db.get_etag(name, db_path)
+                    data, new_etag = api.fetch_pokemon_with_retries(
+                        name, retries=retries, etag=etag
+                    )
+                    if data is None:
+                        saved += 1
+                    else:
+                        db.save_pokemon(data, db_path, etag=new_etag)
+                        saved += 1
                 except api.PokemonAPIError as exc:
                     failed += 1
                     typer.secho(

@@ -59,11 +59,12 @@ def fetch_cmd(
 
     etag = db.get_etag(name, db_path)
 
-    try:
-        data, new_etag = api.fetch_pokemon(name, etag=etag)
-    except api.PokemonAPIError as exc:
-        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from None
+    with api.get_client() as client:
+        try:
+            data, new_etag = api.fetch_pokemon(name, etag=etag, client=client)
+        except api.PokemonAPIError as exc:
+            typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from None
 
     if data is None:
         typer.secho(
@@ -201,46 +202,53 @@ def sync_cmd(
     """Trae Pokémon desde PokéAPI y los guarda en SQLite."""
     db_path = _resolve_db(ctx)
 
-    try:
-        names = api.list_pokemon_names(limit=limit, offset=offset)
-    except api.PokemonAPIError as exc:
-        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from None
+    with api.get_client() as client:
+        try:
+            names = api.list_pokemon_names(limit=limit, offset=offset, client=client)
+        except api.PokemonAPIError as exc:
+            typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from None
 
-    saved = 0
-    failed = 0
-    interrupted = False
-    last_processed = offset
-    total = len(names)
+        saved = 0
+        failed = 0
+        interrupted = False
+        last_processed = offset
+        total = len(names)
 
-    try:
-        with typer.progressbar(names, label="Sincronizando") as progress:
-            for index, entry in enumerate(progress):
-                name = entry["name"]
-                last_processed += 1
-                try:
-                    etag = db.get_etag(name, db_path)
-                    data, new_etag = api.fetch_pokemon_with_retries(
-                        name, retries=retries, etag=etag
-                    )
-                    if data is None:
-                        saved += 1
-                    else:
-                        db.save_pokemon(data, db_path, etag=new_etag)
-                        saved += 1
-                except api.PokemonAPIError as exc:
-                    failed += 1
-                    typer.secho(
-                        f"\nError con {name}: {exc}",
-                        fg=typer.colors.YELLOW,
-                        err=True,
-                    )
+        try:
+            with typer.progressbar(names, label="Sincronizando") as progress:
+                for index, entry in enumerate(progress):
+                    name = entry["name"]
+                    last_processed += 1
+                    try:
+                        etag = db.get_etag(name, db_path)
+                        data, new_etag = api.fetch_pokemon_with_retries(
+                            name,
+                            retries=retries,
+                            etag=etag,
+                            client=client,
+                        )
+                        if data is None:
+                            saved += 1
+                        else:
+                            db.save_pokemon(data, db_path, etag=new_etag)
+                            saved += 1
+                    except api.PokemonAPIError as exc:
+                        failed += 1
+                        typer.secho(
+                            f"\nError con {name}: {exc}",
+                            fg=typer.colors.YELLOW,
+                            err=True,
+                        )
 
-                if sleep_ms > 0 and index < total - 1:
-                    time.sleep(sleep_ms / 1000)
-    except KeyboardInterrupt:
-        interrupted = True
-        typer.secho("\nInterrumpido por el usuario.", fg=typer.colors.YELLOW)
+                    if sleep_ms > 0 and index < total - 1:
+                        time.sleep(sleep_ms / 1000)
+        except KeyboardInterrupt:
+            interrupted = True
+            typer.secho(
+                "\nInterrumpido por el usuario.",
+                fg=typer.colors.YELLOW,
+            )
 
     typer.secho(
         f"Listo. Guardados: {saved}. Fallidos: {failed}.",

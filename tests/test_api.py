@@ -20,7 +20,7 @@ class FakeResponse:
 
 
 class FakeHTTPClient:
-    """Reemplaza a httpx.Client dentro de PokemonClient."""
+    """Simula un httpx.Client para tests."""
 
     def __init__(self, handler):
         self.handler = handler
@@ -33,10 +33,9 @@ class FakeHTTPClient:
 
 
 def make_client(handler, retries=2):
-    """Crea un PokemonClient con el httpx.Client interno reemplazado."""
-    client = api.PokemonClient(retries=retries)
-    client._client = FakeHTTPClient(handler)
-    return client
+    """Crea un PokemonClient con un httpx.Client falso inyectado."""
+    fake_http = FakeHTTPClient(handler)
+    return api.PokemonClient(client=fake_http, retries=retries)
 
 
 def test_fetch_pokemon_ok():
@@ -236,6 +235,13 @@ def test_fetch_pokemon_sends_if_none_match():
     assert captured["headers"]["If-None-Match"] == '"abc"'
 
 
+def test_make_default_client():
+    """make_default_client devuelve un PokemonClient configurado."""
+    client = api.make_default_client()
+    assert isinstance(client, api.PokemonClient)
+    client.close()
+
+
 def test_rate_limiter_no_sleep_when_user_asks():
     limiter = api.RateLimiter(base_sleep_ms=100)
     assert limiter.get_sleep_ms() == 100
@@ -260,8 +266,3 @@ def test_rate_limiter_reset():
     limiter.record_request()
     limiter.reset()
     assert limiter.requests_made == 0
-
-
-def test_pokemon_client_context_manager():
-    with api.PokemonClient() as client:
-        assert isinstance(client, api.PokemonClient)

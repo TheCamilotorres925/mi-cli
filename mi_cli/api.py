@@ -1,3 +1,4 @@
+import random
 import time
 from dataclasses import dataclass
 
@@ -20,7 +21,11 @@ class PermanentAPIError(PokemonAPIError):
 
 @dataclass
 class Pokemon:
-    """Datos básicos de un Pokémon."""
+    """Datos básicos de un Pokémon.
+
+    Nota: aún no se usa; está prevista para reemplazar los dicts
+    que hoy devuelve `PokemonClient.fetch`.
+    """
 
     id: int
     name: str
@@ -30,34 +35,32 @@ class Pokemon:
 
 
 class PokemonClient:
-    """Cliente para consumir PokéAPI."""
+    """Cliente para consumir PokéAPI.
+    El `httpx.Client` que se pasa debe tener configurada la `base_url`
+    (por ejemplo, `https://pokeapi.co/api/v2`) porque este cliente
+    usa rutas relativas como `/pokemon/pikachu`.
+    """
 
     def __init__(
         self,
-        base_url: str = BASE_URL,
+        client: httpx.Client,
         retries: int = 2,
         base_delay_ms: int = 500,
     ) -> None:
+        self._client = client
         self.retries = retries
         self.base_delay_ms = base_delay_ms
-        self._client = httpx.Client(
-            base_url=base_url,
-            timeout=httpx.Timeout(
-                connect=3.0,
-                read=10.0,
-                write=5.0,
-                pool=2.0,
-            ),
-        )
 
     def close(self) -> None:
         """Cierra el cliente HTTP subyacente."""
         self._client.close()
 
     def __enter__(self) -> "PokemonClient":
+        """Permite usar PokemonClient como context manager."""
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        """Cierra el cliente HTTP al salir del bloque `with`."""
         self.close()
 
     def fetch(
@@ -138,7 +141,6 @@ class PokemonClient:
     @staticmethod
     def _jitter(max_ms: int) -> float:
         """Devuelve un delay aleatorio entre 0 y max_ms."""
-        import random
 
         return random.uniform(0, max_ms)
 
@@ -170,3 +172,17 @@ class RateLimiter:
     def reset(self) -> None:
         """Reinicia el contador."""
         self.requests_made = 0
+
+
+def make_default_client(base_url: str = BASE_URL) -> PokemonClient:
+    """Crea un PokemonClient con la configuración por defecto."""
+    http_client = httpx.Client(
+        base_url=base_url,
+        timeout=httpx.Timeout(
+            connect=3.0,
+            read=10.0,
+            write=5.0,
+            pool=2.0,
+        ),
+    )
+    return PokemonClient(client=http_client)

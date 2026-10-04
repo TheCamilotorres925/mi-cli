@@ -68,3 +68,13 @@ Run type checker:
 ## Rate Limiting
 
 `sync` includes a simple rate limiter that adapts the sleep between requests. Even with `--sleep 0`, after 50 requests it starts adding small delays to avoid overwhelming the API.
+
+## HTTP Configuration
+
+The HTTP client uses phase-specific timeouts:
+- `connect`: 3s
+- `read`: 10s
+- `write`: 5s
+- `pool`: 2s
+
+This lets the CLI fail fast when the network is down, without cutting off slow but valid responses.

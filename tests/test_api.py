@@ -304,3 +304,15 @@ def test_fetch_with_retries_jitter_is_not_constant(monkeypatch):
     # que todos coincidan es prácticamente nula.
     rounded = {round(d, 3) for d in captured["delays"]}
     assert len(rounded) > 1
+
+
+def test_get_client_has_phase_timeouts():
+    client = api.get_client()
+    timeout = client.timeout
+
+    assert timeout.connect == 3.0
+    assert timeout.read == 10.0
+    assert timeout.write == 5.0
+    assert timeout.pool == 2.0
+
+    client.close()

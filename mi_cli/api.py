@@ -10,7 +10,12 @@ def get_client() -> httpx.Client:
     """Crea un cliente httpx con configuración común."""
     return httpx.Client(
         base_url=BASE_URL,
-        timeout=10.0,
+        timeout=httpx.Timeout(
+            connect=3.0,
+            read=10.0,
+            write=5.0,
+            pool=2.0,
+        ),
     )
 
 

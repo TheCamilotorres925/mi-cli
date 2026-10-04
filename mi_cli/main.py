@@ -1,11 +1,19 @@
 import json
 import time
+from dataclasses import dataclass
 
 import typer
 
 from mi_cli import api, db
 
 app = typer.Typer()
+
+
+@dataclass
+class AppContext:
+    """Estado compartido entre el callback y los comandos."""
+
+    db_path: str
 
 
 def _row_to_dict(row) -> dict:
@@ -30,13 +38,14 @@ def main(
     ),
 ):
     """CLI para gestionar datos de Pokémon."""
-    ctx.obj = {"db_path": db_path}
+    ctx.obj = AppContext(db_path=db_path)
 
 
 def _resolve_db(ctx: typer.Context) -> str:
     """Valida la DB y devuelve la ruta, o sale con error claro."""
+    app_ctx: AppContext = ctx.obj
     try:
-        return str(db.ensure_db_ready(ctx.obj["db_path"]))
+        return str(db.ensure_db_ready(app_ctx.db_path))
     except db.DatabaseError as exc:
         typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from None

@@ -1,22 +1,9 @@
-import random
 import time
+from dataclasses import dataclass
 
 import httpx
 
 BASE_URL = "https://pokeapi.co/api/v2"
-
-
-def get_client() -> httpx.Client:
-    """Crea un cliente httpx con configuración común."""
-    return httpx.Client(
-        base_url=BASE_URL,
-        timeout=httpx.Timeout(
-            connect=3.0,
-            read=10.0,
-            write=5.0,
-            pool=2.0,
-        ),
-    )
 
 
 class PokemonAPIError(Exception):
@@ -31,113 +18,135 @@ class PermanentAPIError(PokemonAPIError):
     """Error permanente: reintentar no ayuda (404)."""
 
 
-def fetch_pokemon(
-    name: str,
-    etag: str | None = None,
-    client: httpx.Client | None = None,
-) -> tuple[dict | None, str | None]:
-    """Obtiene un Pokémon desde PokéAPI.
+@dataclass
+class Pokemon:
+    """Datos básicos de un Pokémon."""
 
-    Devuelve (data, etag):
-    - Si hay datos nuevos: (dict, "nuevo-etag").
-    - Si el servidor responde 304: (None, etag-anterior).
-    """
-    url = f"/pokemon/{name.strip().lower()}"
-    headers = {}
-    if etag:
-        headers["If-None-Match"] = etag
+    id: int
+    name: str
+    height: int
+    weight: int
+    types: list[str]
 
-    own_client = client is None
-    active_client: httpx.Client = client if client is not None else get_client()
 
-    try:
-        response = active_client.get(url, headers=headers)
-    except httpx.TimeoutException as exc:
-        raise TransientAPIError(f"Timeout al consultar {url}") from exc
-    except httpx.RequestError as exc:
-        raise TransientAPIError(f"Error de red: {exc}") from exc
-    finally:
-        if own_client:
-            active_client.close()
+class PokemonClient:
+    """Cliente para consumir PokéAPI."""
 
-    if response.status_code == 304:
-        return None, etag
-
-    if response.status_code == 404:
-        raise PermanentAPIError(f"Pokémon no encontrado: {name}")
-    if response.status_code >= 500:
-        raise TransientAPIError(f"Error del servidor ({response.status_code}): {url}")
-    if response.status_code != 200:
-        raise PermanentAPIError(
-            f"Respuesta inesperada de la API: {response.status_code}"
+    def __init__(
+        self,
+        base_url: str = BASE_URL,
+        retries: int = 2,
+        base_delay_ms: int = 500,
+    ) -> None:
+        self.retries = retries
+        self.base_delay_ms = base_delay_ms
+        self._client = httpx.Client(
+            base_url=base_url,
+            timeout=httpx.Timeout(
+                connect=3.0,
+                read=10.0,
+                write=5.0,
+                pool=2.0,
+            ),
         )
 
-    new_etag = response.headers.get("ETag")
-    return response.json(), new_etag
+    def close(self) -> None:
+        """Cierra el cliente HTTP subyacente."""
+        self._client.close()
 
+    def __enter__(self) -> "PokemonClient":
+        return self
 
-def list_pokemon_names(
-    limit: int = 20,
-    offset: int = 0,
-    client: httpx.Client | None = None,
-) -> list[dict]:
-    """Devuelve una página de nombres de Pokémon desde PokéAPI."""
-    url = "/pokemon"
-    params = {"limit": limit, "offset": offset}
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
-    own_client = client is None
-    active_client: httpx.Client = client if client is not None else get_client()
+    def fetch(
+        self,
+        name: str,
+        etag: str | None = None,
+    ) -> tuple[dict | None, str | None]:
+        """Obtiene un Pokémon. Maneja ETag: si no cambió, devuelve (None, etag)."""
+        url = f"/pokemon/{name.strip().lower()}"
+        headers = {}
+        if etag:
+            headers["If-None-Match"] = etag
 
-    try:
-        response = active_client.get(url, params=params)
-    except httpx.TimeoutException as exc:
-        raise TransientAPIError(f"Timeout al consultar {url}") from exc
-    except httpx.RequestError as exc:
-        raise TransientAPIError(f"Error de red: {exc}") from exc
-    finally:
-        if own_client:
-            active_client.close()
-
-    if response.status_code >= 500:
-        raise TransientAPIError(f"Error del servidor ({response.status_code}): {url}")
-    if response.status_code != 200:
-        raise PermanentAPIError(
-            f"Respuesta inesperada de la API: {response.status_code}"
-        )
-
-    return response.json()["results"]
-
-
-...
-
-
-def fetch_pokemon_with_retries(
-    name: str,
-    retries: int = 2,
-    base_delay_ms: int = 500,
-    etag: str | None = None,
-    client: httpx.Client | None = None,
-) -> tuple[dict | None, str | None]:
-    """Llama a fetch_pokemon con reintentos y backoff exponencial con jitter."""
-    attempt = 0
-    while True:
         try:
-            return fetch_pokemon(name, etag=etag, client=client)
-        except PermanentAPIError:
-            raise
-        except TransientAPIError:
-            if attempt >= retries:
+            response = self._client.get(url, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise TransientAPIError(f"Timeout al consultar {url}") from exc
+        except httpx.RequestError as exc:
+            raise TransientAPIError(f"Error de red: {exc}") from exc
+
+        if response.status_code == 304:
+            return None, etag
+        if response.status_code == 404:
+            raise PermanentAPIError(f"Pokémon no encontrado: {name}")
+        if response.status_code >= 500:
+            raise TransientAPIError(
+                f"Error del servidor ({response.status_code}): {url}"
+            )
+        if response.status_code != 200:
+            raise PermanentAPIError(
+                f"Respuesta inesperada de la API: {response.status_code}"
+            )
+
+        new_etag = response.headers.get("ETag")
+        return response.json(), new_etag
+
+    def list_names(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        """Devuelve una página de nombres de Pokémon."""
+        url = "/pokemon"
+        params = {"limit": limit, "offset": offset}
+
+        try:
+            response = self._client.get(url, params=params)
+        except httpx.TimeoutException as exc:
+            raise TransientAPIError(f"Timeout al consultar {url}") from exc
+        except httpx.RequestError as exc:
+            raise TransientAPIError(f"Error de red: {exc}") from exc
+
+        if response.status_code >= 500:
+            raise TransientAPIError(
+                f"Error del servidor ({response.status_code}): {url}"
+            )
+        if response.status_code != 200:
+            raise PermanentAPIError(
+                f"Respuesta inesperada de la API: {response.status_code}"
+            )
+
+        return response.json()["results"]
+
+    def fetch_with_retries(
+        self, name: str, etag: str | None = None
+    ) -> tuple[dict | None, str | None]:
+        """Llama a fetch con reintentos y backoff exponencial con jitter."""
+        attempt = 0
+        while True:
+            try:
+                return self.fetch(name, etag=etag)
+            except PermanentAPIError:
                 raise
-            max_delay_ms = base_delay_ms * (2**attempt)
-            delay_ms = random.uniform(0, max_delay_ms)
-            time.sleep(delay_ms / 1000)
-            attempt += 1
+            except TransientAPIError:
+                if attempt >= self.retries:
+                    raise
+                max_delay_ms = self.base_delay_ms * (2**attempt)
+                delay_ms = self._jitter(max_delay_ms)
+                time.sleep(delay_ms / 1000)
+                attempt += 1
+
+    @staticmethod
+    def _jitter(max_ms: int) -> float:
+        """Devuelve un delay aleatorio entre 0 y max_ms."""
+        import random
+
+        return random.uniform(0, max_ms)
 
 
 class RateLimiter:
     """Ajusta el sleep dinámicamente según cuántos requests llevamos."""
 
-    def __init__(self, base_sleep_ms: int = 0):
+    def __init__(self, base_sleep_ms: int = 0) -> None:
         self.base_sleep_ms = base_sleep_ms
         self.requests_made = 0
 
@@ -147,10 +156,8 @@ class RateLimiter:
 
     def get_sleep_ms(self) -> int:
         """Devuelve cuántos ms dormir antes del próximo request."""
-        # Si el usuario pidió dormir, respetamos eso como base
         base = self.base_sleep_ms
 
-        # Añadimos backoff si llevamos muchos requests seguidos
         if self.requests_made > 50:
             base += 200
         if self.requests_made > 100:

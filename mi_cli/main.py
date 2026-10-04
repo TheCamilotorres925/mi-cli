@@ -65,12 +65,11 @@ def fetch_cmd(
 ):
     """Consume PokéAPI y guarda el Pokémon en SQLite."""
     db_path = _resolve_db(ctx)
-
     etag = db.get_etag(name, db_path)
 
-    with api.get_client() as client:
+    with api.PokemonClient() as client:
         try:
-            data, new_etag = api.fetch_pokemon(name, etag=etag, client=client)
+            data, new_etag = client.fetch(name, etag=etag)
         except api.PokemonAPIError as exc:
             typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from None
@@ -191,9 +190,9 @@ def sync_cmd(
     db_path = _resolve_db(ctx)
     limiter = api.RateLimiter(base_sleep_ms=sleep_ms)
 
-    with api.get_client() as client:
+    with api.PokemonClient(retries=retries) as client:
         try:
-            names = api.list_pokemon_names(limit=limit, offset=offset, client=client)
+            names = client.list_names(limit=limit, offset=offset)
         except api.PokemonAPIError as exc:
             typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from None
@@ -212,9 +211,7 @@ def sync_cmd(
 
                     try:
                         etag = db.get_etag(name, db_path)
-                        data, new_etag = api.fetch_pokemon_with_retries(
-                            name, retries=retries, etag=etag, client=client
-                        )
+                        data, new_etag = client.fetch_with_retries(name, etag=etag)
                         limiter.record_request()
                         if data is None:
                             saved += 1

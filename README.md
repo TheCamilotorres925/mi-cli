@@ -63,3 +63,8 @@ Run type checker:
 ## Caching
 
 `fetch` and `sync` use ETag-based caching. When the resource hasn't changed since the last fetch, PokéAPI responds with `304 Not Modified` and the local data is left untouched.
+
+
+## Rate Limiting
+
+`sync` includes a simple rate limiter that adapts the sleep between requests. Even with `--sleep 0`, after 50 requests it starts adding small delays to avoid overwhelming the API.

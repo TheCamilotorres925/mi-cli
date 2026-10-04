@@ -227,3 +227,80 @@ def test_fetch_pokemon_sends_if_none_match(monkeypatch):
     api.fetch_pokemon("pikachu", etag='"abc"')
 
     assert captured["headers"]["If-None-Match"] == '"abc"'
+
+
+def test_rate_limiter_no_sleep_when_user_asks():
+    limiter = api.RateLimiter(base_sleep_ms=100)
+    assert limiter.get_sleep_ms() == 100
+
+
+def test_rate_limiter_adds_backoff_after_many_requests():
+    limiter = api.RateLimiter(base_sleep_ms=0)
+    limiter.requests_made = 51
+    assert limiter.get_sleep_ms() == 200
+
+
+def test_rate_limiter_record_request():
+    limiter = api.RateLimiter(base_sleep_ms=0)
+    assert limiter.requests_made == 0
+    limiter.record_request()
+    limiter.record_request()
+    assert limiter.requests_made == 2
+
+
+def test_rate_limiter_reset():
+    limiter = api.RateLimiter(base_sleep_ms=0)
+    limiter.record_request()
+    limiter.reset()
+    assert limiter.requests_made == 0
+
+
+def test_fetch_with_retries_uses_jitter(monkeypatch):
+    """El delay real debe estar entre 0 y el máximo calculado."""
+    captured = {"delays": []}
+
+    def handler(url, headers, params):
+        raise httpx.TimeoutException("boom")
+
+    def fake_sleep(seconds):
+        captured["delays"].append(seconds)
+
+    monkeypatch.setattr(api, "get_client", lambda: FakeClient(handler))
+    monkeypatch.setattr(api.time, "sleep", fake_sleep)
+
+    with pytest.raises(api.TransientAPIError):
+        api.fetch_pokemon_with_retries("pikachu", retries=2, base_delay_ms=500)
+
+    # Se llamó dos veces (retries=2)
+    assert len(captured["delays"]) == 2
+
+    # El primer delay es entre 0 y 0.5 segundos
+    assert 0 <= captured["delays"][0] <= 0.5
+
+    # El segundo delay es entre 0 y 1.0 segundos
+    assert 0 <= captured["delays"][1] <= 1.0
+
+
+def test_fetch_with_retries_jitter_is_not_constant(monkeypatch):
+    """Con jitter, el delay no debería ser siempre el mismo."""
+    captured = {"delays": []}
+
+    def handler(url, headers, params):
+        raise httpx.TimeoutException("boom")
+
+    def fake_sleep(seconds):
+        captured["delays"].append(seconds)
+
+    monkeypatch.setattr(api, "get_client", lambda: FakeClient(handler))
+    monkeypatch.setattr(api.time, "sleep", fake_sleep)
+
+    # Corremos varias veces acumulando delays
+    for _ in range(10):
+        with pytest.raises(api.TransientAPIError):
+            api.fetch_pokemon_with_retries("pikachu", retries=1)
+
+    # Con jitter, los 10 delays no deberían ser todos iguales.
+    # Con 10 valores aleatorios uniformes, la probabilidad de
+    # que todos coincidan es prácticamente nula.
+    rounded = {round(d, 3) for d in captured["delays"]}
+    assert len(rounded) > 1

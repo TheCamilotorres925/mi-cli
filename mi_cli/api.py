@@ -1,3 +1,4 @@
+import random
 import time
 
 import httpx
@@ -102,6 +103,9 @@ def list_pokemon_names(
     return response.json()["results"]
 
 
+...
+
+
 def fetch_pokemon_with_retries(
     name: str,
     retries: int = 2,
@@ -109,7 +113,7 @@ def fetch_pokemon_with_retries(
     etag: str | None = None,
     client: httpx.Client | None = None,
 ) -> tuple[dict | None, str | None]:
-    """Llama a fetch_pokemon con reintentos y backoff exponencial."""
+    """Llama a fetch_pokemon con reintentos y backoff exponencial con jitter."""
     attempt = 0
     while True:
         try:
@@ -119,6 +123,38 @@ def fetch_pokemon_with_retries(
         except TransientAPIError:
             if attempt >= retries:
                 raise
-            delay = (base_delay_ms * (2**attempt)) / 1000
-            time.sleep(delay)
+            max_delay_ms = base_delay_ms * (2**attempt)
+            delay_ms = random.uniform(0, max_delay_ms)
+            time.sleep(delay_ms / 1000)
             attempt += 1
+
+
+class RateLimiter:
+    """Ajusta el sleep dinámicamente según cuántos requests llevamos."""
+
+    def __init__(self, base_sleep_ms: int = 0):
+        self.base_sleep_ms = base_sleep_ms
+        self.requests_made = 0
+
+    def record_request(self) -> None:
+        """Registra que se hizo un request."""
+        self.requests_made += 1
+
+    def get_sleep_ms(self) -> int:
+        """Devuelve cuántos ms dormir antes del próximo request."""
+        # Si el usuario pidió dormir, respetamos eso como base
+        base = self.base_sleep_ms
+
+        # Añadimos backoff si llevamos muchos requests seguidos
+        if self.requests_made > 50:
+            base += 200
+        if self.requests_made > 100:
+            base += 500
+        if self.requests_made > 200:
+            base += 1000
+
+        return base
+
+    def reset(self) -> None:
+        """Reinicia el contador."""
+        self.requests_made = 0

@@ -173,34 +173,14 @@ def show_cmd(
 @app.command(name="sync")
 def sync_cmd(
     ctx: typer.Context,
-    limit: int = typer.Option(
-        20,
-        "--limit",
-        "-n",
-        help="Número de Pokémon a sincronizar",
-        min=1,
-    ),
-    offset: int = typer.Option(
-        0,
-        "--offset",
-        help="Desde qué posición empezar",
-        min=0,
-    ),
-    sleep_ms: int = typer.Option(
-        100,
-        "--sleep",
-        help="Milisegundos a esperar entre requests",
-        min=0,
-    ),
-    retries: int = typer.Option(
-        2,
-        "--retries",
-        help="Reintentos por Pokémon ante errores temporales",
-        min=0,
-    ),
+    limit: int = typer.Option(20, "--limit", "-n", min=1),
+    offset: int = typer.Option(0, "--offset", min=0),
+    sleep_ms: int = typer.Option(100, "--sleep", min=0),
+    retries: int = typer.Option(2, "--retries", min=0),
 ):
     """Trae Pokémon desde PokéAPI y los guarda en SQLite."""
     db_path = _resolve_db(ctx)
+    limiter = api.RateLimiter(base_sleep_ms=sleep_ms)
 
     with api.get_client() as client:
         try:
@@ -220,14 +200,13 @@ def sync_cmd(
                 for index, entry in enumerate(progress):
                     name = entry["name"]
                     last_processed += 1
+
                     try:
                         etag = db.get_etag(name, db_path)
                         data, new_etag = api.fetch_pokemon_with_retries(
-                            name,
-                            retries=retries,
-                            etag=etag,
-                            client=client,
+                            name, retries=retries, etag=etag, client=client
                         )
+                        limiter.record_request()
                         if data is None:
                             saved += 1
                         else:
@@ -241,14 +220,12 @@ def sync_cmd(
                             err=True,
                         )
 
-                    if sleep_ms > 0 and index < total - 1:
-                        time.sleep(sleep_ms / 1000)
+                    current_sleep = limiter.get_sleep_ms()
+                    if current_sleep > 0 and index < total - 1:
+                        time.sleep(current_sleep / 1000)
         except KeyboardInterrupt:
             interrupted = True
-            typer.secho(
-                "\nInterrumpido por el usuario.",
-                fg=typer.colors.YELLOW,
-            )
+            typer.secho("\nInterrumpido por el usuario.", fg=typer.colors.YELLOW)
 
     typer.secho(
         f"Listo. Guardados: {saved}. Fallidos: {failed}.",

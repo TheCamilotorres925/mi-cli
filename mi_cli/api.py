@@ -144,6 +144,20 @@ class PokemonClient:
 
         return random.uniform(0, max_ms)
 
+    @classmethod
+    def make_default(cls, base_url: str = BASE_URL) -> "PokemonClient":
+        """Crea un PokemonClient con la configuración por defecto."""
+        http_client = httpx.Client(
+            base_url=base_url,
+            timeout=httpx.Timeout(
+                connect=3.0,
+                read=10.0,
+                write=5.0,
+                pool=2.0,
+            ),
+        )
+        return cls(client=http_client)
+
 
 class RateLimiter:
     """Ajusta el sleep dinámicamente según cuántos requests llevamos."""
@@ -172,17 +186,3 @@ class RateLimiter:
     def reset(self) -> None:
         """Reinicia el contador."""
         self.requests_made = 0
-
-
-def make_default_client(base_url: str = BASE_URL) -> PokemonClient:
-    """Crea un PokemonClient con la configuración por defecto."""
-    http_client = httpx.Client(
-        base_url=base_url,
-        timeout=httpx.Timeout(
-            connect=3.0,
-            read=10.0,
-            write=5.0,
-            pool=2.0,
-        ),
-    )
-    return PokemonClient(client=http_client)

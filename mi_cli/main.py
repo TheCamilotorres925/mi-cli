@@ -67,7 +67,7 @@ def fetch_cmd(
     db_path = _resolve_db(ctx)
     etag = db.get_etag(name, db_path)
 
-    with api.make_default_client() as client:
+    with api.PokemonClient.make_default() as client:
         try:
             data, new_etag = client.fetch(name, etag=etag)
         except api.PokemonAPIError as exc:
@@ -190,7 +190,7 @@ def sync_cmd(
     db_path = _resolve_db(ctx)
     limiter = api.RateLimiter(base_sleep_ms=sleep_ms)
 
-    with api.make_default_client() as client:
+    with api.PokemonClient.make_default() as client:
         try:
             names = client.list_names(limit=limit, offset=offset)
         except api.PokemonAPIError as exc:

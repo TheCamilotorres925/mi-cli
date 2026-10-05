@@ -235,9 +235,9 @@ def test_fetch_pokemon_sends_if_none_match():
     assert captured["headers"]["If-None-Match"] == '"abc"'
 
 
-def test_make_default_client():
-    """make_default_client devuelve un PokemonClient configurado."""
-    client = api.make_default_client()
+def test_pokemon_client_make_default():
+    """PokemonClient.make_default devuelve un PokemonClient configurado."""
+    client = api.PokemonClient.make_default()
     assert isinstance(client, api.PokemonClient)
     client.close()
 

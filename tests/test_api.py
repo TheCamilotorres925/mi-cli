@@ -266,3 +266,96 @@ def test_rate_limiter_reset():
     limiter.record_request()
     limiter.reset()
     assert limiter.requests_made == 0
+
+
+class FakeAsyncHTTPClient:
+    """Simula un httpx.AsyncClient para tests."""
+
+    def __init__(self, handler):
+        self.handler = handler
+
+    async def get(self, url, headers=None, params=None):
+        return self.handler(url, headers, params)
+
+    async def aclose(self):
+        pass
+
+
+def make_async_client(handler, retries=2):
+    """Crea un AsyncPokemonClient con un httpx.AsyncClient falso inyectado."""
+    fake_http = FakeAsyncHTTPClient(handler)
+    return api.AsyncPokemonClient(client=fake_http, retries=retries)
+
+
+async def test_async_fetch_pokemon_ok():
+    payload = {"id": 25, "name": "pikachu", "types": []}
+
+    def handler(url, headers, params):
+        return FakeResponse(200, payload, {"ETag": '"abc"'})
+
+    client = make_async_client(handler)
+    data, etag = await client.fetch("pikachu")
+
+    assert data["name"] == "pikachu"
+    assert etag == '"abc"'
+
+
+async def test_async_fetch_pokemon_not_found():
+    def handler(url, headers, params):
+        return FakeResponse(404)
+
+    client = make_async_client(handler)
+
+    with pytest.raises(api.PermanentAPIError, match="no encontrado"):
+        await client.fetch("noexiste")
+
+
+async def test_async_fetch_pokemon_timeout():
+    def handler(url, headers, params):
+        raise httpx.TimeoutException("boom")
+
+    client = make_async_client(handler)
+
+    with pytest.raises(api.TransientAPIError, match="Timeout"):
+        await client.fetch("pikachu")
+
+
+async def test_async_fetch_pokemon_not_modified():
+    def handler(url, headers, params):
+        return FakeResponse(304, headers={})
+
+    client = make_async_client(handler)
+    data, etag = await client.fetch("pikachu", etag='"abc"')
+
+    assert data is None
+    assert etag == '"abc"'
+
+
+async def test_async_fetch_with_retries_succeeds_on_second_attempt(monkeypatch):
+    attempts = {"count": 0}
+
+    def handler(url, headers, params):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise httpx.TimeoutException("boom")
+        return FakeResponse(200, {"id": 25, "name": "pikachu", "types": []})
+
+    client = make_async_client(handler, retries=2)
+
+    async def fake_sleep(_):
+        pass
+
+    monkeypatch.setattr(api.asyncio, "sleep", fake_sleep)
+
+    data, etag = await client.fetch_with_retries("pikachu")
+    assert data["name"] == "pikachu"
+    assert attempts["count"] == 2
+
+
+async def test_async_client_context_manager():
+    def handler(url, headers, params):
+        return FakeResponse(200, {})
+
+    fake_http = FakeAsyncHTTPClient(handler)
+    async with api.AsyncPokemonClient(client=fake_http) as client:
+        assert isinstance(client, api.AsyncPokemonClient)

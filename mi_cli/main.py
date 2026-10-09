@@ -1,5 +1,5 @@
+import asyncio
 import json
-import time
 from dataclasses import dataclass
 
 import typer
@@ -185,65 +185,71 @@ def sync_cmd(
     offset: int = typer.Option(0, "--offset", min=0),
     sleep_ms: int = typer.Option(100, "--sleep", min=0),
     retries: int = typer.Option(2, "--retries", min=0),
+    concurrency: int = typer.Option(
+        5,
+        "--concurrency",
+        "-c",
+        help="Máximo de requests concurrentes",
+        min=1,
+    ),
 ):
     """Trae Pokémon desde PokéAPI y los guarda en SQLite."""
     db_path = _resolve_db(ctx)
-    limiter = api.RateLimiter(base_sleep_ms=sleep_ms)
+    asyncio.run(_sync_async(db_path, limit, offset, sleep_ms, retries, concurrency))
 
-    with api.PokemonClient.make_default() as client:
+
+async def _sync_async(
+    db_path: str,
+    limit: int,
+    offset: int,
+    sleep_ms: int,
+    retries: int,
+    concurrency: int,
+) -> None:
+    """Lógica async de sync, separada para poder usar asyncio.run."""
+    # Obtener la lista de nombres (sync, porque es un solo request)
+    async with api.AsyncPokemonClient.make_default() as client:
         try:
-            names = client.list_names(limit=limit, offset=offset)
+            # Como no hicimos list_names async,
+            # Usamos el cliente sync solo para esta llamada
+            with api.PokemonClient.make_default() as sync_client:
+                names = sync_client.list_names(limit=limit, offset=offset)
         except api.PokemonAPIError as exc:
             typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from None
 
+        sem = asyncio.Semaphore(concurrency)
         saved = 0
         failed = 0
-        interrupted = False
-        last_processed = offset
-        total = len(names)
 
-        try:
-            with typer.progressbar(names, label="Sincronizando") as progress:
-                for index, entry in enumerate(progress):
-                    name = entry["name"]
-                    last_processed += 1
+        async def process_one(entry: dict) -> None:
+            nonlocal saved, failed
+            name = entry["name"]
+            async with sem:
+                try:
+                    etag = db.get_etag(name, db_path)
+                    data, new_etag = await client.fetch_with_retries(name, etag=etag)
+                    if data is None:
+                        saved += 1
+                    else:
+                        db.save_pokemon(data, db_path, etag=new_etag)
+                        saved += 1
+                except api.PokemonAPIError as exc:
+                    failed += 1
+                    typer.secho(
+                        f"\nError con {name}: {exc}",
+                        fg=typer.colors.YELLOW,
+                        err=True,
+                    )
+                if sleep_ms > 0:
+                    await asyncio.sleep(sleep_ms / 1000)
 
-                    try:
-                        etag = db.get_etag(name, db_path)
-                        data, new_etag = client.fetch_with_retries(name, etag=etag)
-                        limiter.record_request()
-                        if data is None:
-                            saved += 1
-                        else:
-                            db.save_pokemon(data, db_path, etag=new_etag)
-                            saved += 1
-                    except api.PokemonAPIError as exc:
-                        failed += 1
-                        typer.secho(
-                            f"\nError con {name}: {exc}",
-                            fg=typer.colors.YELLOW,
-                            err=True,
-                        )
-
-                    current_sleep = limiter.get_sleep_ms()
-                    if current_sleep > 0 and index < total - 1:
-                        time.sleep(current_sleep / 1000)
-        except KeyboardInterrupt:
-            interrupted = True
-            typer.secho("\nInterrumpido por el usuario.", fg=typer.colors.YELLOW)
+        await asyncio.gather(*[process_one(entry) for entry in names])
 
     typer.secho(
         f"Listo. Guardados: {saved}. Fallidos: {failed}.",
         fg=typer.colors.GREEN if failed == 0 else typer.colors.YELLOW,
     )
-
-    if interrupted:
-        typer.echo(
-            f"Puedes continuar desde --offset {last_processed} "
-            f"(el último Pokémon procesado fue el índice {last_processed - 1})."
-        )
-        raise typer.Exit(code=130) from None
 
 
 if __name__ == "__main__":

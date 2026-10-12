@@ -195,7 +195,15 @@ def sync_cmd(
 ):
     """Trae Pokémon desde PokéAPI y los guarda en SQLite."""
     db_path = _resolve_db(ctx)
-    asyncio.run(_sync_async(db_path, limit, offset, sleep_ms, retries, concurrency))
+    try:
+        asyncio.run(_sync_async(db_path, limit, offset, sleep_ms, retries, concurrency))
+    except KeyboardInterrupt:
+        typer.secho(
+            "\nInterrumpido por el usuario.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        raise typer.Exit(code=130) from None
 
 
 async def _sync_async(
@@ -207,11 +215,8 @@ async def _sync_async(
     concurrency: int,
 ) -> None:
     """Lógica async de sync, separada para poder usar asyncio.run."""
-    # Obtener la lista de nombres (sync, porque es un solo request)
     async with api.AsyncPokemonClient.make_default() as client:
         try:
-            # Como no hicimos list_names async,
-            # Usamos el cliente sync solo para esta llamada
             with api.PokemonClient.make_default() as sync_client:
                 names = sync_client.list_names(limit=limit, offset=offset)
         except api.PokemonAPIError as exc:
@@ -225,15 +230,11 @@ async def _sync_async(
         async def process_one(entry: dict) -> None:
             nonlocal saved, failed
             name = entry["name"]
+
             async with sem:
                 try:
                     etag = db.get_etag(name, db_path)
                     data, new_etag = await client.fetch_with_retries(name, etag=etag)
-                    if data is None:
-                        saved += 1
-                    else:
-                        db.save_pokemon(data, db_path, etag=new_etag)
-                        saved += 1
                 except api.PokemonAPIError as exc:
                     failed += 1
                     typer.secho(
@@ -241,10 +242,42 @@ async def _sync_async(
                         fg=typer.colors.YELLOW,
                         err=True,
                     )
+                    return
+                except asyncio.CancelledError:
+                    # Cancelación durante el fetch: no contamos como fallo,
+                    # solo dejamos que se propague.
+                    raise
+
+            if data is None:
+                saved += 1
+            else:
+                db.save_pokemon(data, db_path, etag=new_etag)
+                saved += 1
+
+        tasks = []
+        try:
+            for entry in names:
+                tasks.append(asyncio.create_task(process_one(entry)))
                 if sleep_ms > 0:
                     await asyncio.sleep(sleep_ms / 1000)
 
-        await asyncio.gather(*[process_one(entry) for entry in names])
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            # Cancelar todas las tareas pendientes
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+            # Esperar a que todas terminen (incluso las canceladas)
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Mostrar resumen parcial
+            typer.secho(
+                f"\nResumen parcial. Guardados: {saved}. Fallidos: {failed}.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+            raise
 
     typer.secho(
         f"Listo. Guardados: {saved}. Fallidos: {failed}.",

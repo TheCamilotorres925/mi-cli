@@ -78,3 +78,11 @@ The HTTP client uses phase-specific timeouts:
 - `pool`: 2s
 
 This lets the CLI fail fast when the network is down, without cutting off slow but valid responses.
+
+## Sync
+
+`sync` uses async I/O with a bounded concurrency pool. Use `--concurrency N` to control how many requests run in parallel (default: 5).
+
+## Interruptions
+
+If you press `Ctrl+C` during `sync`, the command shows a partial summary and exits with code 130. Pokémon already saved remain in the database.

@@ -178,6 +178,49 @@ def show_cmd(
     typer.echo(f"Fetched: {row['fetched_at']}")
 
 
+@app.command(name="compare")
+def compare_cmd(
+    ctx: typer.Context,
+    name1: str = typer.Argument(..., help="Primer Pokémon a comparar"),
+    name2: str = typer.Argument(..., help="Segundo Pokémon a comparar"),
+):
+    """Compara dos Pokémon guardados en la base de datos (sin usar internet)."""
+    db_path = _resolve_db(ctx)
+
+    try:
+        result = db.compare_pokemon(name1, name2, db_path)
+    except db.DatabaseError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    typer.secho(
+        f"\n⚔️  {result['p1_name'].title()} vs {result['p2_name'].title()}",
+        fg=typer.colors.CYAN,
+        bold=True,
+    )
+
+    typer.echo(
+        f"Peso:  {result['p1_name']} ({result['p1_weight']})"
+        f"vs {result['p2_name']} ({result['p2_weight']})"
+        f"-> Gana: {result['weight_winner'].title()}"
+    )
+    typer.echo(
+        f"Altura: {result['p1_name']} ({result['p1_height']})"
+        f"vs {result['p2_name']} ({result['p2_height']})"
+        f"-> Gana: {result['height_winner'].title()}"
+    )
+
+    if result["common_types"]:
+        typer.echo(f"Tipos en común: {', '.join(result['common_types'])}")
+    else:
+        typer.echo("No tienen tipos en común.")
+
+    unique1 = ", ".join(result["p1_unique_types"]) or "Ninguno"
+    unique2 = ", ".join(result["p2_unique_types"]) or "Ninguno"
+    typer.echo(f"Tipos únicos de {result['p1_name']}: {unique1}")
+    typer.echo(f"Tipos únicos de {result['p2_name']}: {unique2}")
+
+
 @app.command(name="sync")
 def sync_cmd(
     ctx: typer.Context,

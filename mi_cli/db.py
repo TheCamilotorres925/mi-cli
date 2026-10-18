@@ -143,3 +143,53 @@ def get_etag(name: str, db_path: Path | str | None = None) -> str | None:
             (name.lower(),),
         ).fetchone()
     return row["etag"] if row else None
+
+
+def compare_pokemon(
+    name1: str,
+    name2: str,
+    db_path: Path | str | None = None,
+) -> dict:
+    """Compara dos Pokémon de la base de datos local.
+
+    Lanza DatabaseError si alguno de los dos no está guardado.
+    """
+    p1 = get_pokemon(name1, db_path)
+    p2 = get_pokemon(name2, db_path)
+
+    if p1 is None:
+        raise DatabaseError(
+            f"El Pokémon '{name1}' no está en la base de datos."
+            f"Usa `fetch {name1}` primero."
+        )
+    if p2 is None:
+        raise DatabaseError(
+            f"El Pokémon '{name2}' no está en la base de datos."
+            f"Usa `fetch {name2}` primero."
+        )
+
+    # Convertimos el string JSON de la DB a listas reales
+    types1 = set(json.loads(p1["types"]))
+    types2 = set(json.loads(p2["types"]))
+
+    return {
+        "p1_name": p1["name"],
+        "p2_name": p2["name"],
+        "weight_winner": p1["name"]
+        if p1["weight"] > p2["weight"]
+        else p2["name"]
+        if p2["weight"] > p1["weight"]
+        else "Empate",
+        "height_winner": p1["name"]
+        if p1["height"] > p2["height"]
+        else p2["name"]
+        if p2["height"] > p1["height"]
+        else "Empate",
+        "p1_weight": p1["weight"],
+        "p2_weight": p2["weight"],
+        "p1_height": p1["height"],
+        "p2_height": p2["height"],
+        "common_types": list(types1.intersection(types2)),
+        "p1_unique_types": list(types1 - types2),
+        "p2_unique_types": list(types2 - types1),
+    }

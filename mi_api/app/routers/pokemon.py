@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 
-from ..database import get_all_pokemon, get_pokemon_by_name
-from ..schemas import PokemonResponse
+from ..database import get_all_pokemon, get_pokemon_by_name, save_pokemon
+from ..schemas import PokemonCreate, PokemonResponse
 
 router = APIRouter(
     prefix="/pokemon",
@@ -24,4 +24,30 @@ async def get_pokemon(name: str):
         raise HTTPException(
             status_code=404, detail=f"Pokémon '{name}'no encontrado en la base de datos"
         )
+    return PokemonResponse.from_db_row(row)
+
+
+@router.post("/", response_model=PokemonResponse, status_code=status.HTTP_201_CREATED)
+async def create_or_update_pokemon(pokemon: PokemonCreate):
+    """
+    Crea un nuevo Pokémon en la base de datos.
+    Si el Pokémon ya existe (mismo nombre), lo actualiza.
+    """
+    # El modelo PokemonCreate ya validó que los datos son correctos.
+    # Convertimos a diccionario para pasarlo a la base de datos.
+    data = pokemon.model_dump()
+
+    # Guardamos en la DB (nuestro save hace UPSERT)
+    await save_pokemon(data)
+
+    # Buscamos el Pokémon recién guardado para devolverlo
+    # (Necesitamos buscar para obtener el ID y fetched_at que asigna SQLite)
+    row = await get_pokemon_by_name(data["name"])
+
+    if row is None:
+        # Esto no debería pasar, pero por seguridad
+        raise HTTPException(
+            status_code=500, detail="Error interno al recuperar el Pokémon guardado"
+        )
+
     return PokemonResponse.from_db_row(row)

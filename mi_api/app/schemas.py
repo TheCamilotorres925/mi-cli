@@ -1,6 +1,6 @@
 import json
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PokemonResponse(BaseModel):
@@ -22,3 +22,10 @@ class PokemonResponse(BaseModel):
             types=json.loads(row["types"]),
             fetched_at=row["fetched_at"],
         )
+
+
+class PokemonCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Nombre del Pokémon")
+    height: int = Field(..., ge=0, description="Altura en decímetros")
+    weight: int = Field(..., ge=0, description="Peso en hectogramos")
+    types: list[str] = Field(..., min_length=1, description="Lista de tipos")

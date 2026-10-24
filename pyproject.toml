@@ -47,3 +47,7 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
 ]
+
+[tool.setuptools.packages.find]
+include = ["mi_cli*"]
+exclude = ["mi_api*"]

@@ -70,3 +70,40 @@ async def get_pokemon_by_name(name: str):
 
 async def save_pokemon(pokemon_data: dict):
     return await run_in_threadpool(_save_pokemon_sync, pokemon_data)
+
+
+def _create_users_table_sync():
+    with get_connection() as con:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                hashed_password TEXT NOT NULL
+            )
+        """)
+
+
+def _get_user_sync(username: str):
+    with get_connection() as con:
+        query = "SELECT * FROM users WHERE username = ?"
+        row = con.execute(query, (username,)).fetchone()
+        return dict(row) if row else None
+
+
+def _create_user_sync(username: str, hashed_password: str):
+    with get_connection() as con:
+        query = "INSERT INTO users (username, hashed_password) VALUES (?, ?)"
+        con.execute(query, (username, hashed_password))
+
+
+# Envoltorios async
+async def init_users_table():
+    await run_in_threadpool(_create_users_table_sync)
+
+
+async def get_user(username: str):
+    return await run_in_threadpool(_get_user_sync, username)
+
+
+async def create_user(username: str, hashed_password: str):
+    return await run_in_threadpool(_create_user_sync, username, hashed_password)

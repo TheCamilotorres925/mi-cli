@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>PokéAPI Frontend</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .form-group { margin-bottom: 10px; }
+        input { padding: 5px; margin-right: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>Mi Pokédex Personal</h1>
+
+    <!-- Formulario para agregar (POST) -->
+    <h2>Agregar Pokémon</h2>
+    <div>
+        <div class="form-group">
+            <input type="text" id="name" placeholder="Nombre (ej: mewtwo)">
+            <input type="number" id="height" placeholder="Altura">
+            <input type="number" id="weight" placeholder="Peso">
+            <input type="text" id="types" placeholder="Tipos (separados por coma)">
+            <button onclick="agregarPokemon()">Agregar</button>
+        </div>
+    </div>
+
+    <hr>
+
+    <!-- Botón para cargar (GET) -->
+    <h2>Lista de Pokémon</h2>
+    <button onclick="cargarPokemones()">Cargar Lista</button>
+    <table id="tabla">
+        <thead>
+            <tr>
+                <th>ID</th><th>Nombre</th><th>Altura</th><th>Peso</th><th>Tipos</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+
+        // Función para cargar la lista (GET)
+        async function cargarPokemones() {
+            const response = await fetch(`${API_URL}/pokemon/`);
+            const data = await response.json();
+            
+            const tbody = document.querySelector("#tabla tbody");
+            tbody.innerHTML = ""; // Limpiar tabla
+
+            data.forEach(pokemon => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${pokemon.id}</td>
+                    <td>${pokemon.name}</td>
+                    <td>${pokemon.height}</td>
+                    <td>${pokemon.weight}</td>
+                    <td>${pokemon.types.join(", ")}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Función para agregar (POST)
+        async function agregarPokemon() {
+            const name = document.getElementById("name").value;
+            const height = parseInt(document.getElementById("height").value);
+            const weight = parseInt(document.getElementById("weight").value);
+            const typesInput = document.getElementById("types").value;
+            
+            // Convertimos "fuego, volador" en ["fuego", "volador"]
+            const types = typesInput.split(",").map(t => t.trim());
+
+            const response = await fetch(`${API_URL}/pokemon/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, height, weight, types })
+            });
+
+            if (response.ok) {
+                alert("¡Pokémon guardado!");
+                cargarPokemones(); // Recargar la tabla
+            } else {
+                alert("Error al guardar el Pokémon");
+            }
+        }
+    </script>
+</body>
+</html>

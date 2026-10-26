@@ -1,6 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import pokemon
+from .routers import auth, pokemon
 
 app = FastAPI(
     title="PokéAPI Local",
@@ -8,7 +9,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Conectamos el router
+# Middleware de CORS (debe ir antes de include_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(pokemon.router)
 
 
@@ -18,3 +27,6 @@ def read_root():
         "message": "Bienvenido a la PokéAPI Local. "
         "Ve a /docs para ver la documentación."
     }
+
+
+app.include_router(auth.router)

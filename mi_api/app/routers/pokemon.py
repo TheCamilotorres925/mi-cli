@@ -1,13 +1,20 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+# ruff: noqa: B008
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
+from ..auth import decode_access_token
 from ..config import settings
-from ..database import get_all_pokemon, get_pokemon_by_name, save_pokemon
+from ..database import get_all_pokemon, get_pokemon_by_name, get_user, save_pokemon
 from ..schemas import PokemonCreate, PokemonResponse
 
 router = APIRouter(
     prefix="/pokemon",
-    tags=["Pokemon"],  # Esto agrupa las rutas en la documentación automática
+    tags=["Pokemon"],
 )
+
+# Esquemas de seguridad para Swagger
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 @router.get("/", response_model=list[PokemonResponse])
@@ -29,41 +36,58 @@ async def get_pokemon(name: str):
     return PokemonResponse.from_db_row(row)
 
 
-async def verificar_api_key(x_api_key: str = Header(default=None)):
-    """Dependencia que valida la API Key enviada en la cabecera X-API-Key."""
-    if x_api_key != settings.API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API Key inválida o ausente",
-            headers={"WWW-Authenticate": "ApiKey"},
-        )
-    return x_api_key
+async def verificar_autenticacion(
+    api_key: str | None = Depends(api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+):
+    """
+    Acepta autenticación vía API Key (X-API-Key) o JWT (Authorization: Bearer <token>).
+    """
+    # 1. ¿Viene una API Key?
+    if api_key:
+        if api_key == settings.API_KEY:
+            return "api_key_user"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="API Key inválida",
+            )
+
+    # 2. ¿Viene un token JWT?
+    if bearer:
+        token = bearer.credentials
+        payload = decode_access_token(token)
+        if not payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token inválido o expirado",
+            )
+
+        username = payload.get("sub")
+        user = await get_user(username)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuario no encontrado",
+            )
+        return username
+
+    # 3. No hay ninguna credencial
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No se proporcionó autenticación (X-API-Key o Bearer token)",
+    )
 
 
 @router.post("/", response_model=PokemonResponse, status_code=status.HTTP_201_CREATED)
 async def create_or_update_pokemon(
     pokemon: PokemonCreate,
-    token: str = Depends(verificar_api_key),  # <--- Añadimos la dependencia aquí
+    authenticated_user: str = Depends(verificar_autenticacion),  # <-- Aquí
 ):
-    """
-    Crea un nuevo Pokémon en la base de datos.
-    Si el Pokémon ya existe (mismo nombre), lo actualiza.
-    """
-    # El modelo PokemonCreate ya validó que los datos son correctos.
-    # Convertimos a diccionario para pasarlo a la base de datos.
+    """Crea o actualiza un Pokémon. Requiere API Key o JWT."""
     data = pokemon.model_dump()
-
-    # Guardamos en la DB (nuestro save hace UPSERT)
     await save_pokemon(data)
-
-    # Buscamos el Pokémon recién guardado para devolverlo
-    # (Necesitamos buscar para obtener el ID y fetched_at que asigna SQLite)
     row = await get_pokemon_by_name(data["name"])
-
     if row is None:
-        # Esto no debería pasar, pero por seguridad
-        raise HTTPException(
-            status_code=500, detail="Error interno al recuperar el Pokémon guardado"
-        )
-
+        raise HTTPException(status_code=500, detail="Error interno")
     return PokemonResponse.from_db_row(row)

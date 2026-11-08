@@ -8,36 +8,52 @@
         table { border-collapse: collapse; width: 100%; margin-top: 20px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #f2f2f2; }
-        .form-group { margin-bottom: 10px; }
-        input { padding: 5px; margin-right: 10px; }
+        .hidden { display: none; }
+        #login-section, #session-section { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        #session-section { background-color: #e8f5e9; }
+        .error { color: red; font-size: 0.9em; }
     </style>
 </head>
 <body>
 
     <h1>Mi Pokédex Personal</h1>
 
-    <!-- Formulario para agregar (POST) -->
-    <h2>Agregar Pokémon</h2>
-    <div>
-        <div class="form-group">
-            <input type="text" id="name" placeholder="Nombre (ej: mewtwo)">
-            <input type="number" id="height" placeholder="Altura">
-            <input type="number" id="weight" placeholder="Peso">
-            <input type="text" id="types" placeholder="Tipos (separados por coma)">
-            <button onclick="agregarPokemon()">Agregar</button>
-        </div>
+    <!-- Sección de Login -->
+    <div id="login-section">
+        <h2>Iniciar Sesión</h2>
+        <input type="text" id="login-username" placeholder="Usuario">
+        <input type="password" id="login-password" placeholder="Contraseña">
+        <button onclick="login()">Entrar</button>
+        <p id="login-error" class="error"></p>
+    </div>
+
+    <!-- Sección de Sesión (oculta por defecto) -->
+    <div id="session-section" class="hidden">
+        <h2>Bienvenido, <span id="session-username"></span></h2>
+        <button onclick="logout()">Cerrar Sesión</button>
     </div>
 
     <hr>
 
-    <!-- Botón para cargar (GET) -->
+    <!-- Formulario para agregar (protegido por API Key, pero ahora también puede usar JWT) -->
+    <h2>Agregar Pokémon (Protegido)</h2>
+    <div id="add-pokemon-section">
+        <input type="text" id="name" placeholder="Nombre">
+        <input type="number" id="height" placeholder="Altura">
+        <input type="number" id="weight" placeholder="Peso">
+        <input type="text" id="types" placeholder="Tipos (coma)">
+        <button onclick="agregarPokemon()">Agregar</button>
+        <p id="post-error" class="error"></p>
+    </div>
+
+    <hr>
+
+    <!-- Lista (público) -->
     <h2>Lista de Pokémon</h2>
     <button onclick="cargarPokemones()">Cargar Lista</button>
     <table id="tabla">
         <thead>
-            <tr>
-                <th>ID</th><th>Nombre</th><th>Altura</th><th>Peso</th><th>Tipos</th>
-            </tr>
+            <tr><th>ID</th><th>Nombre</th><th>Altura</th><th>Peso</th><th>Tipos</th></tr>
         </thead>
         <tbody></tbody>
     </table>
@@ -45,48 +61,118 @@
     <script>
         const API_URL = "http://127.0.0.1:8000";
 
-        // Función para cargar la lista (GET)
+        // --- Lógica de autenticación ---
+        async function login() {
+            const username = document.getElementById("login-username").value;
+            const password = document.getElementById("login-password").value;
+            const errorP = document.getElementById("login-error");
+            errorP.textContent = "";
+
+            // FastAPI espera form-data, no JSON, para /token
+            const formData = new URLSearchParams();
+            formData.append("username", username);
+            formData.append("password", password);
+
+            const response = await fetch(`${API_URL}/token`, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: formData
+            });
+
+            if (!response.ok) {
+                errorP.textContent = "Credenciales incorrectas";
+                return;
+            }
+
+            const data = await response.json();
+            localStorage.setItem("token", data.access_token);
+
+            // Verificar que el token funciona consultando /me
+            const meResponse = await fetch(`${API_URL}/me`, {
+                headers: { "Authorization": `Bearer ${data.access_token}` }
+            });
+
+            if (meResponse.ok) {
+                const user = await meResponse.json();
+                showSession(user.username);
+            } else {
+                errorP.textContent = "Error al validar el token";
+            }
+        }
+
+        function showSession(username) {
+            document.getElementById("login-section").classList.add("hidden");
+            document.getElementById("session-section").classList.remove("hidden");
+            document.getElementById("session-username").textContent = username;
+        }
+
+        function logout() {
+            localStorage.removeItem("token");
+            document.getElementById("session-section").classList.add("hidden");
+            document.getElementById("login-section").classList.remove("hidden");
+            document.getElementById("session-username").textContent = "";
+        }
+
+        // Al cargar la página, si hay token guardado, intentar mostrar la sesión
+        window.onload = async () => {
+            const token = localStorage.getItem("token");
+            if (token) {
+                const response = await fetch(`${API_URL}/me`, {
+                    headers: { "Authorization": `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const user = await response.json();
+                    showSession(user.username);
+                } else {
+                    localStorage.removeItem("token"); // token expirado o inválido
+                }
+            }
+        };
+
+        // --- Lógica de Pokémon (la que ya tenías) ---
         async function cargarPokemones() {
             const response = await fetch(`${API_URL}/pokemon/`);
             const data = await response.json();
-            
             const tbody = document.querySelector("#tabla tbody");
-            tbody.innerHTML = ""; // Limpiar tabla
-
-            data.forEach(pokemon => {
+            tbody.innerHTML = "";
+            data.forEach(p => {
                 const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td>${pokemon.id}</td>
-                    <td>${pokemon.name}</td>
-                    <td>${pokemon.height}</td>
-                    <td>${pokemon.weight}</td>
-                    <td>${pokemon.types.join(", ")}</td>
-                `;
+                row.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>${p.height}</td><td>${p.weight}</td><td>${p.types.join(", ")}</td>`;
                 tbody.appendChild(row);
             });
         }
 
-        // Función para agregar (POST)
         async function agregarPokemon() {
             const name = document.getElementById("name").value;
             const height = parseInt(document.getElementById("height").value);
             const weight = parseInt(document.getElementById("weight").value);
-            const typesInput = document.getElementById("types").value;
-            
-            // Convertimos "fuego, volador" en ["fuego", "volador"]
-            const types = typesInput.split(",").map(t => t.trim());
+            const types = document.getElementById("types").value.split(",").map(t => t.trim());
+            const errorP = document.getElementById("post-error");
+            errorP.textContent = "";
+
+            const token = localStorage.getItem("token");
+            const headers = { "Content-Type": "application/json" };
+            if (token) {
+                headers["Authorization"] = `Bearer ${token}`;
+            } else {
+                // Si no hay token, usamos la API Key (aunque el frontend no la tiene)
+                // Para este ejercicio, el POST requerirá token o API Key.
+                // Si no hay token, mostraremos error.
+                errorP.textContent = "Debes iniciar sesión para agregar Pokémon.";
+                return;
+            }
 
             const response = await fetch(`${API_URL}/pokemon/`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: headers,
                 body: JSON.stringify({ name, height, weight, types })
             });
 
             if (response.ok) {
-                alert("¡Pokémon guardado!");
-                cargarPokemones(); // Recargar la tabla
+                alert("Pokémon guardado");
+                cargarPokemones();
             } else {
-                alert("Error al guardar el Pokémon");
+                errorP.textContent = "Error al guardar (¿token expirado o sin permisos?)";
             }
         }
     </script>
